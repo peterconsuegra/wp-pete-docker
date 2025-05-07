@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  # 1) WordPress + PHP-Apache
+  wordpress:
+    build: ./wordpress
+    restart: always
+    volumes:
+      - wp_data:/var/www/html
+    env_file: .env
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${DB_USER}
+      WORDPRESS_DB_PASSWORD: ${DB_PASS}
+      WORDPRESS_DB_NAME: ${DB_NAME}
+      REDIS_HOST: redis
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:80"
+
+  # 2) MariaDB
+  db:
+    image: mariadb:10.6
+    restart: always
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./db-config/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    env_file: .env
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER:     ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  # 3) Redis for object caching
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+  # 4) phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: ${DB_USER}
+      PMA_PASSWORD: ${DB_PASS}
+    depends_on:
+      - db
+
+volumes:
+  wp_data:
+  db_data:
