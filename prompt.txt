@@ -76,6 +76,8 @@ RUN apt-get update \
  && apt-get install -y \
       default-mysql-client \
       vim \
+      python3 \
+      python3-pip \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
@@ -101,6 +103,11 @@ RUN apt-get update \
 
 # 2) Enable Apache modules
 RUN a2enmod rewrite headers expires
+
+COPY pete.conf /etc/apache2/sites-available/pete.conf
+
+RUN a2dissite 000-default.conf \
+ && a2ensite pete.conf
 
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
@@ -131,6 +138,9 @@ RUN curl -sS https://getcomposer.org/installer | php \
 COPY pete_install.sh /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh \
  && chown www-data:www-data /usr/local/bin/pete_install.sh
+
+RUN mkdir -p /var/www/.ssh \
+ && chown -R www-data:www-data /var/www
 
 EXPOSE 80
 
@@ -248,8 +258,9 @@ cat .env
   echo "#######################################"
 
   # Install mod_sec_report dependencies
-  cd /var/www/html/Pete/mod_sec_report && pip install -r requirements.txt
-  chmod 755 /var/www/html/Pete/mod_sec_report/mod_sec_report
+  cd /var/www/html/Pete/mod_sec_report \
+    && pip3 install --no-cache-dir -r requirements.txt \
+    && chmod 755 mod_sec_report
 fi
 
 # 4) Post-install setup
@@ -261,11 +272,12 @@ echo "#######################################"
 cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value="${DOMAIN_TEMPLATE:-}"
 
 # SSH key (for private repos, if needed)
-if [ ! -f /var/www/.ssh/id_rsa.pub ]; then
-  mkdir -p /var/www/.ssh
-  ssh-keygen -t rsa -N "" -f /var/www/.ssh/id_rsa
-  chmod 600 /var/www/.ssh/id_rsa*
-  chown -R www-data:www-data /var/www/.ssh
+SSH_DIR="${HOME}/.ssh"
+if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
+  mkdir -p "${SSH_DIR}"
+  ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
+  chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
+  chown -R www-data:www-data "${SSH_DIR}"
 fi
 
 # ModSecurity flag

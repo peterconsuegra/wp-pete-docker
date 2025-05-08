@@ -33,6 +33,11 @@ RUN apt-get update \
 # 2) Enable Apache modules
 RUN a2enmod rewrite headers expires
 
+COPY pete.conf /etc/apache2/sites-available/pete.conf
+RUN chmod 644 /etc/apache2/sites-available/pete.conf \
+ && a2dissite 000-default.conf \
+ && a2ensite pete.conf
+
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
 
@@ -67,8 +72,6 @@ RUN mkdir -p /var/www/.ssh \
  && chown -R www-data:www-data /var/www
 
 EXPOSE 80
-
-USER www-data
 
 ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 CMD ["apache2-foreground"]
