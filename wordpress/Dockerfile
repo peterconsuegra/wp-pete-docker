@@ -1,10 +1,12 @@
 FROM php:8.1-apache
 
-# 1) Install PHP extensions, the MySQL client, and prepare PEAR temp
+# 1) Install PHP extensions, MySQL client, and tools
 RUN apt-get update \
  && apt-get install -y \
       default-mysql-client \
       vim \
+      python3 \
+      python3-pip \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
@@ -14,8 +16,6 @@ RUN apt-get update \
       git \
       libonig-dev \
       libxml2-dev \
- \
- # configure & install PHP extensions
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
  && docker-php-ext-install -j"$(nproc)" \
       mysqli \
@@ -24,22 +24,16 @@ RUN apt-get update \
       gd \
       zip \
       opcache \
- \
- # ensure PEAR temp exists so pecl can unpack
  && mkdir -p /tmp/pear/temp \
  && chmod -R 0777 /tmp/pear \
- \
- # install and enable Redis via PECL
  && pecl install redis \
  && docker-php-ext-enable redis \
- \
- # clean up
  && rm -rf /var/lib/apt/lists/*
 
 # 2) Enable Apache modules
 RUN a2enmod rewrite headers expires
 
-# 3) Copy in your custom php.ini
+# 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
 
 # 4) Download & unpack WordPress core
@@ -56,12 +50,25 @@ RUN chown -R www-data:www-data /var/www/html
 RUN curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
  && chmod +x /usr/local/bin/wp
 
- # 6) Copy in our custom entrypoint and make it executable
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Silence Apache FQDN warning
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
-# 7) Switch over to our entrypoint and start Apache
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["apache2-foreground"]
+# 👇 Install Composer globally
+RUN curl -sS https://getcomposer.org/installer | php \
+  && mv composer.phar /usr/local/bin/composer \
+  && chmod +x /usr/local/bin/composer
+
+# Copy and set entrypoint script
+COPY pete_install.sh /usr/local/bin/pete_install.sh
+RUN chmod +x /usr/local/bin/pete_install.sh \
+ && chown www-data:www-data /usr/local/bin/pete_install.sh
+
+RUN mkdir -p /var/www/.ssh \
+ && chown -R www-data:www-data /var/www
 
 EXPOSE 80
+
+USER www-data
+
+ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
+CMD ["apache2-foreground"]
