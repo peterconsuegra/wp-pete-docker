@@ -28,3 +28,5 @@ docker-compose -f mac_m1.yml up --build
 
 docker-compose up --build
 
+BULD DOCKER COMPOSE DEVELOPMENT
+docker-compose -f docker-compose.dev.yml up --build -d

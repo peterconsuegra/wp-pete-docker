@@ -6,7 +6,7 @@ services:
     build: ./wordpress
     restart: always
     volumes:
-      - wp_data:/var/www/html
+      - ./html:/var/www/html
       - ssh_data:/root/.ssh 
     env_file: .env
     environment:
@@ -29,7 +29,7 @@ services:
     image: mariadb:10.6
     restart: always
     volumes:
-      - db_data:/var/lib/mysql
+      - code-volume:/var/www/html
       - ./db-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
       - ./db-config/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     env_file: .env
@@ -58,6 +58,6 @@ services:
       - db
 
 volumes:
-  wp_data:
   db_data:
   ssh_data:
+  code-volume:

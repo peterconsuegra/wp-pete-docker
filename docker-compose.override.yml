@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  wordpress:
+    # override the named volume with a bind-mount
+    volumes:
+      - ./dev/html:/var/www/html:delegated
+      - ssh_data:/root/.ssh 
+      # if you want to mount your local pete_install too:
+      - ./wordpress/pete_install.sh:/usr/local/bin/pete_install.sh:ro
