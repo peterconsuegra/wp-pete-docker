@@ -24,7 +24,7 @@ ENTER MYSQL
 docker-compose exec db mysql -u root -p
 
 DOCKER UP
-docker-compose -f mac_m1.yml up --build
+docker-compose up --build
 
 docker-compose up --build
 
