@@ -7,6 +7,7 @@ services:
     restart: always
     volumes:
       - wp_data:/var/www/html
+      - ssh_data:/root/.ssh
     env_file: .env
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -59,3 +60,4 @@ services:
 volumes:
   wp_data:
   db_data:
+  ssh_data:
