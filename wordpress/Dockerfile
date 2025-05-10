@@ -41,12 +41,6 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
 
-# 4) Download & unpack WordPress core
-RUN curl -o /tmp/wordpress.tar.gz https://wordpress.org/latest.tar.gz \
- && tar -xzf /tmp/wordpress.tar.gz --strip-components=1 -C /var/www/html \
- && rm /tmp/wordpress.tar.gz \
- && chown -R www-data:www-data /var/www/html
-
 # 5) Set working dir & ensure ownership
 WORKDIR /var/www/html
 RUN chown -R www-data:www-data /var/www/html

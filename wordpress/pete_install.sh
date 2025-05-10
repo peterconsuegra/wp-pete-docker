@@ -7,17 +7,6 @@ until mysqladmin ping -h db -u"$DB_USER" -p"$DB_PASS" --silent; do
   sleep 3
 done
 
-# 2) Bootstrap wp-config.php if missing
-WP_CONFIG=/var/www/html/wp-config.php
-if [ ! -f "$WP_CONFIG" ]; then
-  cp /var/www/html/wp-config-sample.php "$WP_CONFIG"
-  sed -i "s/database_name_here/${DB_NAME}/" "$WP_CONFIG"
-  sed -i "s/username_here/${DB_USER}/" "$WP_CONFIG"
-  sed -i "s/password_here/${DB_PASS}/" "$WP_CONFIG"
-  sed -i "s/'DB_HOST', 'localhost'/'DB_HOST', 'db'/" "$WP_CONFIG"
-  chown www-data:www-data "$WP_CONFIG"
-fi
-
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
   echo "#######################################"
@@ -52,9 +41,6 @@ PETE_DEMO=inactive
 PETE_ENVIRONMENT=production
 PETE_DEBUG=inactive
 EOF
-
-cat .env
-
 
   # Install PHP deps & migrate
   rm -rf vendor

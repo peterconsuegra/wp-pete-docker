@@ -2,7 +2,7 @@ DEVELOPMENT TO RUN THE PROJECT:
 
 chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
-docker-compose up --build -d
+docker-compose up --build
 
 ENTER TO APP CONSOLE
 docker-compose exec wordpress bash  
