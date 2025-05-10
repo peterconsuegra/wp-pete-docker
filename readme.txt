@@ -1,17 +1,22 @@
-UN PROMPT OUTPUT
-python3 prompt.py
+DEVELOPMENT TO RUN THE PROJECT:
 
-
-REBUILD DOCKER WITHOUT CACHE
-docker-compose build --no-cache wordpress
+chmod +x db-config/init.sh
+chmod +x wordpress/pete_install.sh
+docker-compose up --build -d
 
 ENTER TO APP CONSOLE
 docker-compose exec wordpress bash  
 
+PROMPT GENERATOR
+python3 prompt.py
+
+REBUILD DOCKER WITHOUT CACHE
+docker-compose build --no-cache wordpress
+
 UP DOCKER
 docker-compose up -d
 
-DOWN DOCKER -v removing the volumes
+DOWN DOCKER -v removing the volumes (Delete all inside containers)
 docker-compose down -v 
 
 DOWN DOCKER
