@@ -54,7 +54,7 @@ EOF
   php artisan addoption --option_name=parent_version --option_value=6
   php artisan addoption --option_name=version --option_value="$latestTag"
   php artisan addoption --option_name=app_root --option_value=/var/www/html
-  php artisan addoption --option_name=server_conf --option_value="$conf_route"
+  php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
   php artisan addoption --option_name=server --option_value=apache
   php artisan addoption --option_name=server_version --option_value=24
   php artisan addoption --option_name=os_version --option_value=bionic

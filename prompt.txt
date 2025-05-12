@@ -26,7 +26,7 @@ services:
       - db
       - redis
     ports:
-      - "8000:80"
+      - "80:80"
 
   # 2) MariaDB
   db:
@@ -114,12 +114,6 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
 
-# 4) Download & unpack WordPress core
-RUN curl -o /tmp/wordpress.tar.gz https://wordpress.org/latest.tar.gz \
- && tar -xzf /tmp/wordpress.tar.gz --strip-components=1 -C /var/www/html \
- && rm /tmp/wordpress.tar.gz \
- && chown -R www-data:www-data /var/www/html
-
 # 5) Set working dir & ensure ownership
 WORKDIR /var/www/html
 RUN chown -R www-data:www-data /var/www/html
@@ -143,6 +137,23 @@ RUN chmod +x /usr/local/bin/pete_install.sh \
 
 RUN mkdir -p /var/www/.ssh \
  && chown -R www-data:www-data /var/www
+
+# ─── Add www-data nopasswd sudo rules ─────────────────────────────────────────
+RUN printf '%s\n' \
+    'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload,' \
+    '               /usr/bin/update-alternatives,' \
+    '               /var/www/html/Pete/scripts/securitystatus.sh,' \
+    '               /var/www/html/Pete/scripts/get_mod_sec_report.sh,' \
+    '               /var/www/html/Pete/scripts/print_security_report.sh,' \
+    '               /var/www/html/Pete/scripts/change_php.sh,' \
+    '               /var/www/html/Pete/scripts/phpmyadmin.sh,' \
+    '               /var/www/html/Pete/scripts/delete.sh,' \
+    '               /var/www/html/Pete/scripts/upload_capacity.sh,' \
+    '               /usr/bin/git,' \
+    '               /var/www/html/Pete/scripts/generate_ssl.sh' \
+    '               /var/www/html/Pete/scripts/create_config_file.sh' \
+  > /etc/sudoers.d/www-data \
+ && chmod 440 /etc/sudoers.d/www-data
 
 EXPOSE 80
 
@@ -175,17 +186,6 @@ echo "Waiting for MySQL..."
 until mysqladmin ping -h db -u"$DB_USER" -p"$DB_PASS" --silent; do
   sleep 3
 done
-
-# 2) Bootstrap wp-config.php if missing
-WP_CONFIG=/var/www/html/wp-config.php
-if [ ! -f "$WP_CONFIG" ]; then
-  cp /var/www/html/wp-config-sample.php "$WP_CONFIG"
-  sed -i "s/database_name_here/${DB_NAME}/" "$WP_CONFIG"
-  sed -i "s/username_here/${DB_USER}/" "$WP_CONFIG"
-  sed -i "s/password_here/${DB_PASS}/" "$WP_CONFIG"
-  sed -i "s/'DB_HOST', 'localhost'/'DB_HOST', 'db'/" "$WP_CONFIG"
-  chown www-data:www-data "$WP_CONFIG"
-fi
 
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
@@ -222,9 +222,6 @@ PETE_ENVIRONMENT=production
 PETE_DEBUG=inactive
 EOF
 
-cat .env
-
-
   # Install PHP deps & migrate
   rm -rf vendor
   COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev
@@ -237,7 +234,7 @@ cat .env
   php artisan addoption --option_name=parent_version --option_value=6
   php artisan addoption --option_name=version --option_value="$latestTag"
   php artisan addoption --option_name=app_root --option_value=/var/www/html
-  php artisan addoption --option_name=server_conf --option_value="$conf_route"
+  php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
   php artisan addoption --option_name=server --option_value=apache
   php artisan addoption --option_name=server_version --option_value=24
   php artisan addoption --option_name=os_version --option_value=bionic
@@ -324,7 +321,24 @@ mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
     IDENTIFIED BY '${PETE_DB_PASS}';
   GRANT ALL PRIVILEGES ON \`${PETE_DB_NAME}\`.* TO '${PETE_DB_USER}'@'%';
 
+  GRANT CREATE, DROP, ALTER, INDEX ON *.* TO '${PETE_DB_USER}'@'%';
+
   FLUSH PRIVILEGES;
 EOSQL
 
+```
+
+========================================
+
+**.env**
+```
+DB_NAME=wordpress
+DB_USER=wpuser
+DB_PASS=SuperSecretPass
+MYSQL_ROOT_PASSWORD=EvenMoreSecret
+PETE_DB_USER=pete
+PETE_DB_NAME=pete_db
+PETE_DB_PASS=pixma301
+PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env
+PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```

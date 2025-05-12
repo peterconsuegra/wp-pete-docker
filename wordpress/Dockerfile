@@ -62,6 +62,27 @@ COPY pete_install.sh /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh \
  && chown www-data:www-data /usr/local/bin/pete_install.sh
 
+# 7) Ensure sudoers.d exists before adding rules
+RUN mkdir -p /etc/sudoers.d
+
+# 8) Add www-data nopasswd sudo rules
+RUN printf '%s\n' \
+    'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload,' \
+    '               /usr/bin/update-alternatives,' \
+    '               /var/www/html/Pete/scripts/securitystatus.sh,' \
+    '               /var/www/html/Pete/scripts/get_mod_sec_report.sh,' \
+    '               /var/www/html/Pete/scripts/print_security_report.sh,' \
+    '               /var/www/html/Pete/scripts/change_php.sh,' \
+    '               /var/www/html/Pete/scripts/phpmyadmin.sh,' \
+    '               /var/www/html/Pete/scripts/delete.sh,' \
+    '               /var/www/html/Pete/scripts/upload_capacity.sh,' \
+    '               /usr/bin/git,' \
+    '               /var/www/html/Pete/scripts/generate_ssl.sh,' \
+    '               /var/www/html/Pete/scripts/create_config_file.sh' \
+  > /etc/sudoers.d/www-data \
+ && chmod 440 /etc/sudoers.d/www-data
+
+# Prepare .ssh directory for cloning private repos
 RUN mkdir -p /var/www/.ssh \
  && chown -R www-data:www-data /var/www
 

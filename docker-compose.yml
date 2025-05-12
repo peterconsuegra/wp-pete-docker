@@ -22,7 +22,7 @@ services:
       - db
       - redis
     ports:
-      - "8000:80"
+      - "80:80"
 
   # 2) MariaDB
   db:
