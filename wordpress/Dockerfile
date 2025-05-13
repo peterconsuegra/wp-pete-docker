@@ -5,6 +5,7 @@ RUN apt-get update \
  && apt-get install -y \
       default-mysql-client \
       vim \
+      sudo \
       python3 \
       python3-pip \
       libfreetype6-dev \
@@ -30,8 +31,11 @@ RUN apt-get update \
  && docker-php-ext-enable redis \
  && rm -rf /var/lib/apt/lists/*
 
-# 2) Enable Apache modules
-RUN a2enmod rewrite headers expires
+# 2) Enable Apache modules (added vhost_alias)
+RUN a2enmod rewrite headers expires vhost_alias
+
+# 3) Ensure vhost directories exist (for your bind mounts)
+RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
 
 COPY pete.conf /etc/apache2/sites-available/pete.conf
 RUN chmod 644 /etc/apache2/sites-available/pete.conf \
@@ -65,20 +69,9 @@ RUN chmod +x /usr/local/bin/pete_install.sh \
 # 7) Ensure sudoers.d exists before adding rules
 RUN mkdir -p /etc/sudoers.d
 
-# 8) Add www-data nopasswd sudo rules
+# 8) Create a single‐line sudoers entry for www-data
 RUN printf '%s\n' \
-    'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload,' \
-    '               /usr/bin/update-alternatives,' \
-    '               /var/www/html/Pete/scripts/securitystatus.sh,' \
-    '               /var/www/html/Pete/scripts/get_mod_sec_report.sh,' \
-    '               /var/www/html/Pete/scripts/print_security_report.sh,' \
-    '               /var/www/html/Pete/scripts/change_php.sh,' \
-    '               /var/www/html/Pete/scripts/phpmyadmin.sh,' \
-    '               /var/www/html/Pete/scripts/delete.sh,' \
-    '               /var/www/html/Pete/scripts/upload_capacity.sh,' \
-    '               /usr/bin/git,' \
-    '               /var/www/html/Pete/scripts/generate_ssl.sh,' \
-    '               /var/www/html/Pete/scripts/create_config_file.sh' \
+  'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/securitystatus.sh, /var/www/html/Pete/scripts/get_mod_sec_report.sh, /var/www/html/Pete/scripts/print_security_report.sh, /var/www/html/Pete/scripts/change_php.sh, /var/www/html/Pete/scripts/phpmyadmin.sh, /var/www/html/Pete/scripts/delete.sh, /var/www/html/Pete/scripts/upload_capacity.sh, /usr/bin/git, /var/www/html/Pete/scripts/generate_ssl.sh, /var/www/html/Pete/scripts/create_config_file.sh' \
   > /etc/sudoers.d/www-data \
  && chmod 440 /etc/sudoers.d/www-data
 
@@ -86,7 +79,17 @@ RUN printf '%s\n' \
 RUN mkdir -p /var/www/.ssh \
  && chown -R www-data:www-data /var/www
 
+# ── create a persistent log dir and four shorthand symlinks under /root ──
+RUN mkdir -p /data/wwwlog \
+ && mkdir -p /root/sites /root/configs /root/configse /root/logs \
+ && ln -sf /var/www/html                   /root/sites \
+ && ln -sf /etc/apache2/sites-available    /root/configs \
+ && ln -sf /etc/apache2/sites-enabled      /root/configse \
+ && ln -sf /data/wwwlog                    /root/logs
+
 EXPOSE 80
+
+VOLUME ["/etc/apache2/sites-available","/etc/apache2/sites-enabled"]
 
 ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 CMD ["apache2-foreground"]
