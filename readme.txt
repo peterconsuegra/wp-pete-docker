@@ -4,8 +4,11 @@ chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
 docker-compose up --build
 
-ENTER TO APP CONSOLE
-docker-compose exec wordpress bash  
+ENTER TO APP CONTAINER
+docker-compose exec wordpress bash 
+
+ENTER TO DB CONTAINER
+docker-compose exec db bash
 
 PROMPT GENERATOR
 python3 prompt.py

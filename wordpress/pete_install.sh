@@ -16,12 +16,13 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone -b docker_pro https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
-  git fetch --tags
-  latestTag=$(git describe --tags $(git rev-list --tags --max-count=1))
-  git checkout "$latestTag"
+  #git fetch --tags
+  #latestTag=$(git describe --tags $(git rev-list --tags --max-count=1))
+  #git checkout "$latestTag"
+  latestTag=10.4
 
   # Reset composer & env
   rm -f auth.json composer.json
@@ -58,9 +59,10 @@ EOF
   php artisan addoption --option_name=server --option_value=apache
   php artisan addoption --option_name=server_version --option_value=24
   php artisan addoption --option_name=os_version --option_value=bionic
-  php artisan addoption --option_name=os_distribution --option_value=docker
+  php artisan addoption --option_name=os_distribution --option_value=ubuntu
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
+  php artisan addoption --option_name=domain_template --option_value=petelocal.net
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -86,7 +88,7 @@ echo "Launching WordPress Pete..."
 echo "#######################################"
 
 # Domain template
-cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value="${DOMAIN_TEMPLATE:-}"
+#cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value="${DOMAIN_TEMPLATE:-}"
 
 # SSH key (for private repos, if needed)
 SSH_DIR="${HOME}/.ssh"

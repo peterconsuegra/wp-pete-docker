@@ -37,10 +37,15 @@ RUN a2enmod rewrite headers expires vhost_alias
 # 3) Ensure vhost directories exist (for your bind mounts)
 RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
 
+# copy & enable pete.conf
 COPY pete.conf /etc/apache2/sites-available/pete.conf
 RUN chmod 644 /etc/apache2/sites-available/pete.conf \
  && a2dissite 000-default.conf \
  && a2ensite pete.conf
+
+# <<< NEW: rename the symlink so pete is alphabetically first >>>
+RUN mv /etc/apache2/sites-enabled/pete.conf \
+      /etc/apache2/sites-enabled/000-pete.conf
 
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
