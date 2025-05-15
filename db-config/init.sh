@@ -4,11 +4,6 @@ set -e
 echo ">>> Initializing WordPress & Pete databases…"
 
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
-  CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`
-    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-  CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
-    IDENTIFIED BY '${DB_PASS}';
-  GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';
 
   CREATE DATABASE IF NOT EXISTS \`${PETE_DB_NAME}\`
     CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

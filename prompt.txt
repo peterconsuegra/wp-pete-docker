@@ -16,9 +16,6 @@ services:
     env_file: .env
     environment:
       WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: ${DB_USER}
-      WORDPRESS_DB_PASSWORD: ${DB_PASS}
-      WORDPRESS_DB_NAME: ${DB_NAME}
       PETE_DB_NAME: ${PETE_DB_NAME}
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
@@ -39,9 +36,6 @@ services:
       - ./db-config/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     env_file: .env
     environment:
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER:     ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASS}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
   # 3) Redis for object caching
@@ -197,7 +191,7 @@ set -e
 
 # 1) Wait for MySQL to be ready
 echo "Waiting for MySQL..."
-until mysqladmin ping -h db -u"$DB_USER" -p"$DB_PASS" --silent; do
+until mysqladmin ping -h db -u"$DB_UPETE_DB_USERSER" -p"$PETE_DB_PASS" --silent; do
   sleep 3
 done
 
@@ -325,11 +319,6 @@ set -e
 echo ">>> Initializing WordPress & Pete databases…"
 
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
-  CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`
-    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-  CREATE USER IF NOT EXISTS '${DB_USER}'@'%'
-    IDENTIFIED BY '${DB_PASS}';
-  GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';
 
   CREATE DATABASE IF NOT EXISTS \`${PETE_DB_NAME}\`
     CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -348,9 +337,6 @@ EOSQL
 
 **.env**
 ```
-DB_NAME=wordpress
-DB_USER=wpuser
-DB_PASS=SuperSecretPass
 MYSQL_ROOT_PASSWORD=EvenMoreSecret
 PETE_DB_USER=pete
 PETE_DB_NAME=pete_db

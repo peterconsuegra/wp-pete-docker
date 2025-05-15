@@ -12,9 +12,6 @@ services:
     env_file: .env
     environment:
       WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: ${DB_USER}
-      WORDPRESS_DB_PASSWORD: ${DB_PASS}
-      WORDPRESS_DB_NAME: ${DB_NAME}
       PETE_DB_NAME: ${PETE_DB_NAME}
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
@@ -35,9 +32,6 @@ services:
       - ./db-config/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     env_file: .env
     environment:
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER:     ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASS}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
   # 3) Redis for object caching
