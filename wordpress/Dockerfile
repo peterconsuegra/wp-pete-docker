@@ -43,6 +43,25 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
  && a2dissite 000-default.conf \
  && a2ensite pete.conf
 
+ARG PMA_VERSION=5.2.1
+
+# 4) Pull in phpMyAdmin and set it up under /usr/src/phpmyadmin
+RUN set -eux; \
+    curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz; \
+    tar xzf /tmp/pma.tar.gz -C /usr/src/; \
+    mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
+    rm /tmp/pma.tar.gz; \
+    cp /usr/src/phpmyadmin/config.sample.inc.php /usr/src/phpmyadmin/config.inc.php; \
+    sed -i "s|\$cfg\['blowfish_secret'\] = ''|\$cfg['blowfish_secret'] = '$(openssl rand -base64 32)'|g" /usr/src/phpmyadmin/config.inc.php; \
+    sed -i "s/\$cfg\['Servers'\]\[1\]\['host'\] = 'localhost'/\$cfg['Servers'][1]['host'] = 'db'/g" /usr/src/phpmyadmin/config.inc.php; \
+    chown -R www-data:www-data /usr/src/phpmyadmin
+
+# Copy your separate global alias file and enable it
+COPY phpmyadmin.conf /etc/apache2/conf-available/phpmyadmin.conf
+RUN chmod 644 /etc/apache2/conf-available/phpmyadmin.conf \
+ && a2enconf phpmyadmin
+
 # <<< NEW: rename the symlink so pete is alphabetically first >>>
 RUN mv /etc/apache2/sites-enabled/pete.conf \
       /etc/apache2/sites-enabled/000-pete.conf

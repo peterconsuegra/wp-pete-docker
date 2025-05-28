@@ -15,6 +15,7 @@ services:
       PETE_DB_NAME: ${PETE_DB_NAME}
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       REDIS_HOST: redis
     depends_on:
       - db
