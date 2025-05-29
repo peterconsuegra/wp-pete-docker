@@ -44,19 +44,6 @@ services:
     image: redis:7-alpine
     restart: always
 
-  # 4) phpMyAdmin
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    restart: always
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      PMA_USER: ${DB_USER}
-      PMA_PASSWORD: ${DB_PASS}
-    depends_on:
-      - db
-
 volumes:
   wp_data:
   db_data:
@@ -101,6 +88,9 @@ RUN apt-get update \
  && docker-php-ext-enable redis \
  && rm -rf /var/lib/apt/lists/*
 
+RUN cp .gitconfig /var/www/.gitconfig \
+ && chown www-data:www-data /var/www/.gitconfig
+
 # 2) Enable Apache modules (added vhost_alias)
 RUN a2enmod rewrite headers expires vhost_alias
 
@@ -115,19 +105,18 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
 
 ARG PMA_VERSION=5.2.1
 
-# 4) Pull in phpMyAdmin and set it up under /usr/src/phpmyadmin
 RUN set -eux; \
     curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
       -o /tmp/pma.tar.gz; \
     tar xzf /tmp/pma.tar.gz -C /usr/src/; \
     mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
-    rm /tmp/pma.tar.gz; \
-    cp /usr/src/phpmyadmin/config.sample.inc.php /usr/src/phpmyadmin/config.inc.php; \
-    sed -i "s|\$cfg\['blowfish_secret'\] = ''|\$cfg['blowfish_secret'] = '$(openssl rand -base64 32)'|g" /usr/src/phpmyadmin/config.inc.php; \
-    sed -i "s/\$cfg\['Servers'\]\[1\]\['host'\] = 'localhost'/\$cfg['Servers'][1]['host'] = 'db'/g" /usr/src/phpmyadmin/config.inc.php; \
-    chown -R www-data:www-data /usr/src/phpmyadmin
+    rm /tmp/pma.tar.gz
 
-# Copy your separate global alias file and enable it
+# overwrite with your working config
+COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
+RUN chown www-data:www-data /usr/src/phpmyadmin/config.inc.php
+
+# then enable the alias site as before
 COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
 RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
  && a2ensite phpmyadmin.conf
@@ -165,7 +154,7 @@ RUN mkdir -p /etc/sudoers.d
 
 # 8) Create a single‐line sudoers entry for www-data
 RUN printf '%s\n' \
-  'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/securitystatus.sh, /var/www/html/Pete/scripts/get_mod_sec_report.sh, /var/www/html/Pete/scripts/print_security_report.sh, /var/www/html/Pete/scripts/change_php.sh, /var/www/html/Pete/scripts/phpmyadmin.sh, /var/www/html/Pete/scripts/delete.sh, /var/www/html/Pete/scripts/upload_capacity.sh, /usr/bin/git, /var/www/html/Pete/scripts/generate_ssl.sh, /var/www/html/Pete/scripts/create_config_file.sh' \
+  'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/securitystatus.sh, /var/www/html/Pete/scripts/get_mod_sec_report.sh, /var/www/html/Pete/scripts/print_security_report.sh, /var/www/html/Pete/scripts/change_php.sh, /var/www/html/Pete/scripts/phpmyadmin.sh, /var/www/html/Pete/scripts/delete.sh, /var/www/html/Pete/scripts/upload_capacity.sh, /usr/bin/git, /var/www/html/Pete/scripts/generate_ssl.sh, /var/www/html/Pete/scripts/create_config_file.sh, /var/www/html/Pete/scripts/phpmyadmin.sh' \
   > /etc/sudoers.d/www-data \
  && chmod 440 /etc/sudoers.d/www-data
 
@@ -271,6 +260,7 @@ EOF
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  php artisan addoption --option_name=phpmyadmin_status --option_value=on
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -361,7 +351,7 @@ MYSQL_ROOT_PASSWORD=EvenMoreSecret
 PETE_DB_USER=pete
 PETE_DB_NAME=pete_db
 PETE_DB_PASS=pixma301
-PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env,wordpress/pete.conf,wordpress/phpmyadmin.conf
+PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env,wordpress/pete.conf,wordpress/phpmyadmin.conf,wordpress/.gitconfig
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```
 
@@ -399,4 +389,17 @@ Alias /phpmyadmin /usr/src/phpmyadmin
     AllowOverride None
     Require all granted
 </Directory>
+```
+
+========================================
+
+**wordpress/.gitconfig**
+```
+[user]
+  name  = Pedro Consuegra
+  email = pedroconsuegrat@gmail.com
+
+[safe]
+  directory = /var/www/html
+  directory = /var/www/html/Pete
 ```

@@ -31,6 +31,9 @@ RUN apt-get update \
  && docker-php-ext-enable redis \
  && rm -rf /var/lib/apt/lists/*
 
+COPY .gitconfig /root/.gitconfig
+RUN chown root:root /root/.gitconfig
+
 # 2) Enable Apache modules (added vhost_alias)
 RUN a2enmod rewrite headers expires vhost_alias
 
@@ -45,19 +48,18 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
 
 ARG PMA_VERSION=5.2.1
 
-# 4) Pull in phpMyAdmin and set it up under /usr/src/phpmyadmin
 RUN set -eux; \
     curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
       -o /tmp/pma.tar.gz; \
     tar xzf /tmp/pma.tar.gz -C /usr/src/; \
     mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
-    rm /tmp/pma.tar.gz; \
-    cp /usr/src/phpmyadmin/config.sample.inc.php /usr/src/phpmyadmin/config.inc.php; \
-    sed -i "s|\$cfg\['blowfish_secret'\] = ''|\$cfg['blowfish_secret'] = '$(openssl rand -base64 32)'|g" /usr/src/phpmyadmin/config.inc.php; \
-    sed -i "s/\$cfg\['Servers'\]\[1\]\['host'\] = 'localhost'/\$cfg['Servers'][1]['host'] = 'db'/g" /usr/src/phpmyadmin/config.inc.php; \
-    chown -R www-data:www-data /usr/src/phpmyadmin
+    rm /tmp/pma.tar.gz
 
-# Copy your separate global alias file and enable it
+# overwrite with your working config
+COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
+RUN chown www-data:www-data /usr/src/phpmyadmin/config.inc.php
+
+# then enable the alias site as before
 COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
 RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
  && a2ensite phpmyadmin.conf
@@ -95,7 +97,7 @@ RUN mkdir -p /etc/sudoers.d
 
 # 8) Create a single‐line sudoers entry for www-data
 RUN printf '%s\n' \
-  'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/securitystatus.sh, /var/www/html/Pete/scripts/get_mod_sec_report.sh, /var/www/html/Pete/scripts/print_security_report.sh, /var/www/html/Pete/scripts/change_php.sh, /var/www/html/Pete/scripts/phpmyadmin.sh, /var/www/html/Pete/scripts/delete.sh, /var/www/html/Pete/scripts/upload_capacity.sh, /usr/bin/git, /var/www/html/Pete/scripts/generate_ssl.sh, /var/www/html/Pete/scripts/create_config_file.sh' \
+  'www-data ALL=(ALL) NOPASSWD: /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/securitystatus.sh, /var/www/html/Pete/scripts/get_mod_sec_report.sh, /var/www/html/Pete/scripts/print_security_report.sh, /var/www/html/Pete/scripts/change_php.sh, /var/www/html/Pete/scripts/phpmyadmin.sh, /var/www/html/Pete/scripts/delete.sh, /var/www/html/Pete/scripts/upload_capacity.sh, /usr/bin/git, /var/www/html/Pete/scripts/generate_ssl.sh, /var/www/html/Pete/scripts/create_config_file.sh, /var/www/html/Pete/scripts/phpmyadmin.sh' \
   > /etc/sudoers.d/www-data \
  && chmod 440 /etc/sudoers.d/www-data
 

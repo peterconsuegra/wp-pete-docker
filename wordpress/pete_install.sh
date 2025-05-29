@@ -63,6 +63,7 @@ EOF
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  php artisan addoption --option_name=phpmyadmin_status --option_value=on
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs

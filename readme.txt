@@ -4,6 +4,11 @@ chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
 docker-compose up --build
 
+CHANGES IN DOCKERFILE
+docker-compose down -v 
+docker-compose build --no-cache wordpress
+docker-compose up --build
+
 ENTER TO APP CONTAINER
 docker-compose exec wordpress bash 
 
