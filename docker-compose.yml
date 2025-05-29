@@ -40,19 +40,6 @@ services:
     image: redis:7-alpine
     restart: always
 
-  # 4) phpMyAdmin
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    restart: always
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      PMA_USER: ${DB_USER}
-      PMA_PASSWORD: ${DB_PASS}
-    depends_on:
-      - db
-
 volumes:
   wp_data:
   db_data:

@@ -58,9 +58,9 @@ RUN set -eux; \
     chown -R www-data:www-data /usr/src/phpmyadmin
 
 # Copy your separate global alias file and enable it
-COPY phpmyadmin.conf /etc/apache2/conf-available/phpmyadmin.conf
-RUN chmod 644 /etc/apache2/conf-available/phpmyadmin.conf \
- && a2enconf phpmyadmin
+COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
+RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
+ && a2ensite phpmyadmin.conf
 
 # <<< NEW: rename the symlink so pete is alphabetically first >>>
 RUN mv /etc/apache2/sites-enabled/pete.conf \

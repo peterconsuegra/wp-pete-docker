@@ -19,6 +19,7 @@ services:
       PETE_DB_NAME: ${PETE_DB_NAME}
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       REDIS_HOST: redis
     depends_on:
       - db
@@ -112,6 +113,25 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
  && a2dissite 000-default.conf \
  && a2ensite pete.conf
 
+ARG PMA_VERSION=5.2.1
+
+# 4) Pull in phpMyAdmin and set it up under /usr/src/phpmyadmin
+RUN set -eux; \
+    curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz; \
+    tar xzf /tmp/pma.tar.gz -C /usr/src/; \
+    mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
+    rm /tmp/pma.tar.gz; \
+    cp /usr/src/phpmyadmin/config.sample.inc.php /usr/src/phpmyadmin/config.inc.php; \
+    sed -i "s|\$cfg\['blowfish_secret'\] = ''|\$cfg['blowfish_secret'] = '$(openssl rand -base64 32)'|g" /usr/src/phpmyadmin/config.inc.php; \
+    sed -i "s/\$cfg\['Servers'\]\[1\]\['host'\] = 'localhost'/\$cfg['Servers'][1]['host'] = 'db'/g" /usr/src/phpmyadmin/config.inc.php; \
+    chown -R www-data:www-data /usr/src/phpmyadmin
+
+# Copy your separate global alias file and enable it
+COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
+RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
+ && a2ensite phpmyadmin.conf
+
 # <<< NEW: rename the symlink so pete is alphabetically first >>>
 RUN mv /etc/apache2/sites-enabled/pete.conf \
       /etc/apache2/sites-enabled/000-pete.conf
@@ -204,7 +224,7 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone -b docker_pro https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone -b docker_pro_utm https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
   #git fetch --tags
@@ -224,7 +244,7 @@ DB_PORT=3306
 DB_DATABASE=${PETE_DB_NAME}
 DB_USERNAME=${PETE_DB_USER}
 DB_PASSWORD=${PETE_DB_PASSWORD}
-PETE_ROOT_PASS=${PETE_DB_PASSWORD}
+PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
 PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
 PETE_DEMO=inactive
 PETE_ENVIRONMENT=production
@@ -341,6 +361,42 @@ MYSQL_ROOT_PASSWORD=EvenMoreSecret
 PETE_DB_USER=pete
 PETE_DB_NAME=pete_db
 PETE_DB_PASS=pixma301
-PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env
+PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env,wordpress/pete.conf,wordpress/phpmyadmin.conf
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
+```
+
+========================================
+
+**wordpress/pete.conf**
+```
+<VirtualHost *:80>
+    ServerName localhost
+
+    # Point DocumentRoot to Laravel’s public folder
+    DocumentRoot /var/www/html/Pete/public
+
+    <Directory /var/www/html/Pete/public>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # You can add logs if you like:
+    # ErrorLog ${APACHE_LOG_DIR}/pete_error.log
+    # CustomLog ${APACHE_LOG_DIR}/pete_access.log combined
+</VirtualHost>
+```
+
+========================================
+
+**wordpress/phpmyadmin.conf**
+```
+Alias /phpmyadmin /usr/src/phpmyadmin
+
+<Directory /usr/src/phpmyadmin>
+    Options Indexes FollowSymLinks
+    DirectoryIndex index.php
+    AllowOverride None
+    Require all granted
+</Directory>
 ```
