@@ -46,7 +46,9 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
  && a2dissite 000-default.conf \
  && a2ensite pete.conf
 
-ARG PMA_VERSION=5.2.1
+RUN a2enmod env
+
+ARG PMA_VERSION=5.2.2
 
 RUN set -eux; \
     curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
@@ -58,6 +60,10 @@ RUN set -eux; \
 # overwrite with your working config
 COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
 RUN chown www-data:www-data /usr/src/phpmyadmin/config.inc.php
+
+RUN mkdir -p /usr/src/phpmyadmin/tmp \
+ && chown www-data:www-data /usr/src/phpmyadmin/tmp \
+ && chmod 700 /usr/src/phpmyadmin/tmp
 
 # then enable the alias site as before
 COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf

@@ -16,6 +16,7 @@ services:
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      BLOWFISH_SECRET: ${BLOWFISH_SECRET}
       REDIS_HOST: redis
     depends_on:
       - db

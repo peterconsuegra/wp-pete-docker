@@ -88,8 +88,8 @@ RUN apt-get update \
  && docker-php-ext-enable redis \
  && rm -rf /var/lib/apt/lists/*
 
-RUN cp .gitconfig /var/www/.gitconfig \
- && chown www-data:www-data /var/www/.gitconfig
+COPY .gitconfig /root/.gitconfig
+RUN chown root:root /root/.gitconfig
 
 # 2) Enable Apache modules (added vhost_alias)
 RUN a2enmod rewrite headers expires vhost_alias
