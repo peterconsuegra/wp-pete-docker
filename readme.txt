@@ -4,6 +4,9 @@ chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
 docker-compose up --build
 
+REINICIAR APACHE
+apache2ctl restart
+
 CHANGES IN DOCKERFILE
 docker-compose down -v 
 docker-compose build --no-cache wordpress

@@ -20,6 +20,7 @@ services:
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      BLOWFISH_SECRET: ${BLOWFISH_SECRET}
       REDIS_HOST: redis
     depends_on:
       - db
@@ -103,7 +104,9 @@ RUN chmod 644 /etc/apache2/sites-available/pete.conf \
  && a2dissite 000-default.conf \
  && a2ensite pete.conf
 
-ARG PMA_VERSION=5.2.1
+RUN a2enmod env
+
+ARG PMA_VERSION=5.2.2
 
 RUN set -eux; \
     curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
@@ -115,6 +118,10 @@ RUN set -eux; \
 # overwrite with your working config
 COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
 RUN chown www-data:www-data /usr/src/phpmyadmin/config.inc.php
+
+RUN mkdir -p /usr/src/phpmyadmin/tmp \
+ && chown www-data:www-data /usr/src/phpmyadmin/tmp \
+ && chmod 700 /usr/src/phpmyadmin/tmp
 
 # then enable the alias site as before
 COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
@@ -351,6 +358,7 @@ MYSQL_ROOT_PASSWORD=EvenMoreSecret
 PETE_DB_USER=pete
 PETE_DB_NAME=pete_db
 PETE_DB_PASS=pixma301
+BLOWFISH_SECRET=9f2c4e5a7d8b1c3e4f6a8b0c9d2e1f3a
 PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env,wordpress/pete.conf,wordpress/phpmyadmin.conf,wordpress/.gitconfig
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```
@@ -389,6 +397,10 @@ Alias /phpmyadmin /usr/src/phpmyadmin
     AllowOverride None
     Require all granted
 </Directory>
+
+<IfModule mod_env.c>
+  PassEnv BLOWFISH_SECRET
+</IfModule>
 ```
 
 ========================================

@@ -35,7 +35,13 @@ COPY .gitconfig /root/.gitconfig
 RUN chown root:root /root/.gitconfig
 
 # 2) Enable Apache modules (added vhost_alias)
-RUN a2enmod rewrite headers expires vhost_alias
+RUN a2enmod rewrite headers expires vhost_alias env status
+
+# server-status hack: replace the default status.conf with your custom block
+RUN a2enmod status
+
+# overwrite the default
+COPY status.conf /etc/apache2/mods-enabled/status.conf
 
 # 3) Ensure vhost directories exist (for your bind mounts)
 RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
