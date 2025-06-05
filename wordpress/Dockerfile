@@ -46,6 +46,45 @@ COPY status.conf /etc/apache2/mods-enabled/status.conf
 # 3) Ensure vhost directories exist (for your bind mounts)
 RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
 
+# ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libapache2-mod-security2 \
+      modsecurity-crs \
+      curl \
+      ca-certificates && \
+    \
+    # 1) Prepare directories
+    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
+    # 2) Copy core ModSecurity config so we can later flip it ON
+    cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
+    \
+    # 3) Ensure CRS setup file exists (Debian sometimes omits the example)
+    if [ ! -f /usr/share/modsecurity-crs/crs-setup.conf.example ]; then \
+      curl -fsSL \
+        https://raw.githubusercontent.com/coreruleset/coreruleset/v3.3.4/crs-setup.conf.example \
+        -o /etc/modsecurity/crs-setup.conf; \
+    else \
+      cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf; \
+    fi && \
+    \
+    # 4) Symlink ALL of the CRS .conf files into /etc/modsecurity/rules
+    ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
+    \
+    # 5) Symlink ALL of the CRS .data files into /etc/modsecurity/rules
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/ || true
+
+# ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+
+# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
+RUN a2enmod security2 \
+ && rm -f /etc/apache2/mods-enabled/security2.conf \
+ && a2enconf modsecurity \
+ && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ && apache2ctl configtest
+
 # copy & enable pete.conf
 COPY pete.conf /etc/apache2/sites-available/pete.conf
 RUN chmod 644 /etc/apache2/sites-available/pete.conf \
