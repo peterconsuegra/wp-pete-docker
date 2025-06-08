@@ -135,12 +135,14 @@ RUN apt-get update && \
 
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY whitelist.conf /etc/modsecurity/whitelist.conf
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
 RUN a2enmod security2 \
  && rm -f /etc/apache2/mods-enabled/security2.conf \
  && a2enconf modsecurity \
  && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ && echo "Include /etc/modsecurity/whitelist.conf" >> /etc/modsecurity/modsecurity.conf \
  && apache2ctl configtest
 
 # copy & enable pete.conf
