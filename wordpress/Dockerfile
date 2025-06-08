@@ -47,33 +47,33 @@ COPY status.conf /etc/apache2/mods-enabled/status.conf
 RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled
 
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ARG CRS_VERSION=4.15.0
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       libapache2-mod-security2 \
-      modsecurity-crs \
       curl \
       ca-certificates && \
     \
-    # 1) Prepare directories
+    # Prepare ModSecurity dirs
     mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
     \
-    # 2) Copy core ModSecurity config so we can later flip it ON
+    # Copy base config
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
     \
-    # 3) Ensure CRS setup file exists (Debian sometimes omits the example)
-    if [ ! -f /usr/share/modsecurity-crs/crs-setup.conf.example ]; then \
-      curl -fsSL \
-        https://raw.githubusercontent.com/coreruleset/coreruleset/v3.3.4/crs-setup.conf.example \
-        -o /etc/modsecurity/crs-setup.conf; \
-    else \
-      cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf; \
-    fi && \
+    # Download and extract OWASP CRS v${CRS_VERSION}
+    curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+      -o /tmp/crs.tar.gz && \
+    tar zxvf /tmp/crs.tar.gz -C /usr/share && \
+    mv /usr/share/coreruleset-${CRS_VERSION} /usr/share/modsecurity-crs && \
+    rm /tmp/crs.tar.gz && \
     \
-    # 4) Symlink ALL of the CRS .conf files into /etc/modsecurity/rules
+    # Copy CRS example setup into place
+    cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf && \
+    \
+    # Symlink all rule and data files
     ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
-    \
-    # 5) Symlink ALL of the CRS .data files into /etc/modsecurity/rules
-    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/ || true
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
 
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
