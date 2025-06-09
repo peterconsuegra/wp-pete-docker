@@ -64,6 +64,7 @@ EOF
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=domain_template --option_value=petelocal.net
   php artisan addoption --option_name=phpmyadmin_status --option_value=on
+  php artisan addoption --option_name=security_status --option_value=on
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -98,13 +99,6 @@ if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
   ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
   chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
   chown -R www-data:www-data "${SSH_DIR}"
-fi
-
-# ModSecurity flag
-if [ "$MOD_SECURITY" = "On" ]; then
-  cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=on
-else
-  cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=off
 fi
 
 # Server-status flag

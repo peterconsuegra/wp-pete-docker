@@ -8,6 +8,7 @@ RUN apt-get update \
       sudo \
       python3 \
       python3-pip \
+      python3-jinja2 \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
