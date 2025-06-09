@@ -66,6 +66,7 @@ RUN apt-get update \
       sudo \
       python3 \
       python3-pip \
+      python3-jinja2 \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
@@ -137,12 +138,13 @@ RUN apt-get update && \
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY whitelist.conf /etc/modsecurity/whitelist.conf
 
-# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
-RUN a2enmod security2 \
- && rm -f /etc/apache2/mods-enabled/security2.conf \
- && a2enconf modsecurity \
- && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
- && apache2ctl configtest
+ RUN a2enmod security2 \
+      && rm -f /etc/apache2/mods-enabled/security2.conf \
+      && a2enconf modsecurity \
+      && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+      && echo "SecAuditLogFormat JSON"                    >> /etc/modsecurity/modsecurity.conf \
+      && echo "Include /etc/modsecurity/whitelist.conf"   >> /etc/modsecurity/modsecurity.conf \
+      && apache2ctl configtest
 
 # copy & enable pete.conf
 COPY pete.conf /etc/apache2/sites-available/pete.conf
@@ -507,17 +509,18 @@ SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
 ```
 LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
 
-<IfModule security2_module>
-    SecRuleEngine On
-    SecRequestBodyAccess On
-    SecResponseBodyAccess Off
+ <IfModule security2_module>
+     SecRuleEngine On
+     SecRequestBodyAccess On
+     SecResponseBodyAccess Off
 
-    Include /etc/modsecurity/modsecurity.conf
+     Include /etc/modsecurity/modsecurity.conf
 
-    Include /etc/modsecurity/whitelist.conf
 
-    IncludeOptional /etc/modsecurity/*.conf
-    IncludeOptional /etc/modsecurity/rules/*.conf
-</IfModule>
+     Include /etc/modsecurity/crs-setup.conf
 
+     Include /etc/modsecurity/whitelist.conf
+
+     IncludeOptional /etc/modsecurity/rules/*.conf
+ </IfModule>
 ```

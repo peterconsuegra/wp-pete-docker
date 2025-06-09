@@ -84,6 +84,10 @@ RUN a2enmod security2 \
  && rm -f /etc/apache2/mods-enabled/security2.conf \
  && a2enconf modsecurity \
  && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ \
+ # enable JSON output for the audit log
+ && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+ \
  && apache2ctl configtest
 
 # copy & enable pete.conf
