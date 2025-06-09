@@ -1,6 +1,6 @@
 FROM php:8.1-apache
 
-# 1) Install PHP extensions, MySQL client, and tools
+# 1) Install PHP extensions, MySQL client, Certbot, its Apache plugin, and other tools
 RUN apt-get update \
  && apt-get install -y \
       default-mysql-client \
@@ -9,12 +9,14 @@ RUN apt-get update \
       python3 \
       python3-pip \
       python3-jinja2 \
+      certbot \
+      python3-certbot-apache \
+      unzip \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
       libzip-dev \
       zip \
-      unzip \
       git \
       libonig-dev \
       libxml2-dev \
