@@ -3,7 +3,7 @@ set -e
 
 # 1) Wait for MySQL to be ready
 echo "Waiting for MySQL..."
-until mysqladmin ping -h db -u"$DB_UPETE_DB_USERSER" -p"$PETE_DB_PASS" --silent; do
+until mysqladmin ping -h db --silent; do
   sleep 3
 done
 

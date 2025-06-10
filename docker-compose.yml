@@ -1,13 +1,26 @@
 services:
-  wordpress:
-    build: ./wordpress
+  apache:
+    build: ./apache
     restart: always
+    depends_on:
+      - php
+      - db
+      - redis
     volumes:
-      - wp_data:/var/www/html
-      - ssh_data:/root/.ssh
+      - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
-    env_file: .env
+    ports:
+      - "80:80"
+  php:
+    build: ./php
+    restart: always
+    expose:
+      - "9000"                           # FPM listens here
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/root/.ssh              # Pete still needs this
+    env_file: .env                       # same env as before
     environment:
       WORDPRESS_DB_HOST: db:3306
       PETE_DB_NAME: ${PETE_DB_NAME}
@@ -16,12 +29,6 @@ services:
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       BLOWFISH_SECRET: ${BLOWFISH_SECRET}
       REDIS_HOST: redis
-    depends_on:
-      - db
-      - redis
-    ports:
-      - "80:80"
-
   db:
     image: mariadb:10.6
     restart: always

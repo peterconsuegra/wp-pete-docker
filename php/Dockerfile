@@ -38,10 +38,10 @@ COPY .gitconfig /root/.gitconfig
 RUN chown root:root /root/.gitconfig
 
 # 2) Enable Apache modules (added vhost_alias)
-RUN a2enmod rewrite headers expires vhost_alias env status
+#RUN a2enmod rewrite headers expires vhost_alias env status
 
 # server-status hack: replace the default status.conf with your custom block
-RUN a2enmod status
+#RUN a2enmod status
 
 # overwrite the default
 COPY status.conf /etc/apache2/mods-enabled/status.conf
@@ -79,27 +79,27 @@ RUN apt-get update && \
     ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
 
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
-COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
-COPY whitelist.conf /etc/modsecurity/whitelist.conf
+#COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+#COPY whitelist.conf /etc/modsecurity/whitelist.conf
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
-RUN a2enmod security2 \
- && rm -f /etc/apache2/mods-enabled/security2.conf \
- && a2enconf modsecurity \
- && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
- \
- # enable JSON output for the audit log
- && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
- \
- && apache2ctl configtest
+#RUN a2enmod security2 \
+# && rm -f /etc/apache2/mods-enabled/security2.conf \
+# && a2enconf modsecurity \
+# && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+# \
+# # enable JSON output for the audit log
+# && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+# \
+# && apache2ctl configtest
 
 # copy & enable pete.conf
-COPY pete.conf /etc/apache2/sites-available/pete.conf
-RUN chmod 644 /etc/apache2/sites-available/pete.conf \
- && a2dissite 000-default.conf \
- && a2ensite pete.conf
+#COPY pete.conf /etc/apache2/sites-available/pete.conf
+#RUN chmod 644 /etc/apache2/sites-available/pete.conf \
+# && a2dissite 000-default.conf \
+# && a2ensite pete.conf
 
-RUN a2enmod env
+#RUN a2enmod env
 
 ARG PMA_VERSION=5.2.2
 
@@ -119,13 +119,13 @@ RUN mkdir -p /usr/src/phpmyadmin/tmp \
  && chmod 700 /usr/src/phpmyadmin/tmp
 
 # then enable the alias site as before
-COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
-RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
- && a2ensite phpmyadmin.conf
+#COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
+#RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
+# && a2ensite phpmyadmin.conf
 
 # <<< NEW: rename the symlink so pete is alphabetically first >>>
-RUN mv /etc/apache2/sites-enabled/pete.conf \
-      /etc/apache2/sites-enabled/000-pete.conf
+#RUN mv /etc/apache2/sites-enabled/pete.conf \
+#      /etc/apache2/sites-enabled/000-pete.conf
 
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/

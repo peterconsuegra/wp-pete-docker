@@ -10,10 +10,13 @@ apache2ctl restart
 CHANGES IN DOCKERFILE
 docker-compose down -v 
 docker-compose build --no-cache wordpress
+docker-compose build --no-cache apache
+docker-compose build --no-cache php
 docker-compose up --build
 
 ENTER TO APP CONTAINER
 docker-compose exec wordpress bash 
+docker-compose exec apache bash
 
 ENTER TO DB CONTAINER
 docker-compose exec db bash

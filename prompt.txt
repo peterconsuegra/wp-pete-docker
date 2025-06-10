@@ -3,29 +3,30 @@
 **docker-compose.yml**
 ```
 services:
-  wordpress:
-    build: ./wordpress
+  apache:
+    build: ./apache
     restart: always
-    volumes:
-      - wp_data:/var/www/html
-      - ssh_data:/root/.ssh
-      - apache_sites_available:/etc/apache2/sites-available
-      - apache_sites_enabled:/etc/apache2/sites-enabled
-    env_file: .env
-    environment:
-      WORDPRESS_DB_HOST: db:3306
-      PETE_DB_NAME: ${PETE_DB_NAME}
-      PETE_DB_USER: ${PETE_DB_USER}
-      PETE_DB_PASSWORD: ${PETE_DB_PASS}
-      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      BLOWFISH_SECRET: ${BLOWFISH_SECRET}
-      REDIS_HOST: redis
     depends_on:
+      - php
       - db
       - redis
+    volumes:
+      - wp_data:/var/www/html            # shared codebase
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
     ports:
       - "80:80"
-
+  php:
+    build: ./php
+    restart: always
+    expose:
+      - "9000"                           # FPM listens here
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/root/.ssh              # Pete still needs this
+    env_file: .env                       # same env as before
+    environment:
+      WORDPRESS_DB_HOST: db:3306
   db:
     image: mariadb:10.6
     restart: always
@@ -51,7 +52,7 @@ volumes:
 
 ========================================
 
-**wordpress/Dockerfile**
+**php/Dockerfile**
 ```
 FROM php:8.1-apache
 
@@ -93,10 +94,10 @@ COPY .gitconfig /root/.gitconfig
 RUN chown root:root /root/.gitconfig
 
 # 2) Enable Apache modules (added vhost_alias)
-RUN a2enmod rewrite headers expires vhost_alias env status
+#RUN a2enmod rewrite headers expires vhost_alias env status
 
 # server-status hack: replace the default status.conf with your custom block
-RUN a2enmod status
+#RUN a2enmod status
 
 # overwrite the default
 COPY status.conf /etc/apache2/mods-enabled/status.conf
@@ -134,27 +135,27 @@ RUN apt-get update && \
     ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
 
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
-COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
-COPY whitelist.conf /etc/modsecurity/whitelist.conf
+#COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+#COPY whitelist.conf /etc/modsecurity/whitelist.conf
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
-RUN a2enmod security2 \
- && rm -f /etc/apache2/mods-enabled/security2.conf \
- && a2enconf modsecurity \
- && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
- \
- # enable JSON output for the audit log
- && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
- \
- && apache2ctl configtest
+#RUN a2enmod security2 \
+# && rm -f /etc/apache2/mods-enabled/security2.conf \
+# && a2enconf modsecurity \
+# && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+# \
+# # enable JSON output for the audit log
+# && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+# \
+# && apache2ctl configtest
 
 # copy & enable pete.conf
-COPY pete.conf /etc/apache2/sites-available/pete.conf
-RUN chmod 644 /etc/apache2/sites-available/pete.conf \
- && a2dissite 000-default.conf \
- && a2ensite pete.conf
+#COPY pete.conf /etc/apache2/sites-available/pete.conf
+#RUN chmod 644 /etc/apache2/sites-available/pete.conf \
+# && a2dissite 000-default.conf \
+# && a2ensite pete.conf
 
-RUN a2enmod env
+#RUN a2enmod env
 
 ARG PMA_VERSION=5.2.2
 
@@ -174,13 +175,13 @@ RUN mkdir -p /usr/src/phpmyadmin/tmp \
  && chmod 700 /usr/src/phpmyadmin/tmp
 
 # then enable the alias site as before
-COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
-RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
- && a2ensite phpmyadmin.conf
+#COPY phpmyadmin.conf /etc/apache2/sites-available/phpmyadmin.conf
+#RUN chmod 644 /etc/apache2/sites-available/phpmyadmin.conf \
+# && a2ensite phpmyadmin.conf
 
 # <<< NEW: rename the symlink so pete is alphabetically first >>>
-RUN mv /etc/apache2/sites-enabled/pete.conf \
-      /etc/apache2/sites-enabled/000-pete.conf
+#RUN mv /etc/apache2/sites-enabled/pete.conf \
+#      /etc/apache2/sites-enabled/000-pete.conf
 
 # 3) Copy custom php.ini
 COPY php.ini /usr/local/etc/php/
@@ -238,6 +239,63 @@ CMD ["apache2-foreground"]
 
 ========================================
 
+**apache/Dockerfile**
+```
+# ─────────────────────────────────────────────────────────────
+# Apache (event) + ModSecurity 2 + OWASP CRS
+# ─────────────────────────────────────────────────────────────
+FROM debian:bullseye-slim
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1) Packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      apache2 apache2-utils \
+      libapache2-mod-security2 \
+      modsecurity-crs \
+      curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# 2) event MPM  +  required modules
+RUN a2dismod mpm_prefork && \
+    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2
+
+# 3) ModSecurity base + CRS (rules **and** phrase files)
+RUN set -e; \
+    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
+    \
+    CRS_SETUP=$(find /usr/share -type f -name "crs-setup.conf.example" | head -n1 || true); \
+    if [ -n "$CRS_SETUP" ]; then \
+        cp "$CRS_SETUP" /etc/modsecurity/crs-setup.conf; \
+    else \
+        echo "# minimal setup" > /etc/modsecurity/crs-setup.conf; \
+    fi && \
+    \
+    # link *.conf rules
+    find /usr/share -type f -path "*modsecurity-crs*/rules/*.conf" -print0 \
+      | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
+    # link *.data phrase files (fixes the scanners-user-agents.data error)
+    find /usr/share -type f -path "*modsecurity-crs*/rules/*.data" -print0 \
+      | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
+    \
+    rm -f /etc/apache2/mods-enabled/security2.load   # silence duplicate-load warning
+
+# 4)  vHosts & custom includes
+COPY pete.conf               /etc/apache2/sites-available/
+COPY phpmyadmin.conf         /etc/apache2/sites-available/
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY whitelist.conf          /etc/modsecurity/whitelist.conf
+RUN a2ensite pete.conf phpmyadmin.conf && a2enconf modsecurity
+
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+WORKDIR /var/www/html
+EXPOSE 80
+CMD ["apachectl","-D","FOREGROUND"]
+
+```
+
+========================================
+
 **db-config/my.cnf**
 ```
 [mysqld]
@@ -250,7 +308,7 @@ skip-name-resolve
 
 ========================================
 
-**wordpress/pete_install.sh**
+**php/pete_install.sh**
 ```bash
 #!/bin/bash
 set -e
@@ -405,19 +463,16 @@ PETE_DB_USER=pete
 PETE_DB_NAME=pete_db
 PETE_DB_PASS=pixma301
 BLOWFISH_SECRET=9f2c4e5a7d8b1c3e4f6a8b0c9d2e1f3a
-PROMPT_GENERATOR_FILES=docker-compose.yml,wordpress/Dockerfile,db-config/my.cnf,wordpress/pete_install.sh,db-config/init.sh,.env,wordpress/pete.conf,wordpress/phpmyadmin.conf,wordpress/.gitconfig,wordpress/whitelist.conf,wordpress/modsecurity-apache.conf
+PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-config/my.cnf,php/pete_install.sh,db-config/init.sh,.env,apache/pete.conf,apache/phpmyadmin.conf,php/.gitconfig,apache/whitelist.conf,apache/modsecurity-apache.conf
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```
 
 ========================================
 
-**wordpress/pete.conf**
+**apache/pete.conf**
 ```
 <VirtualHost *:80>
-
     ServerName localhost
-
-    # Point DocumentRoot to Laravel’s public folder
     DocumentRoot /var/www/html/Pete/public
 
     <Directory /var/www/html/Pete/public>
@@ -426,16 +481,20 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
         Require all granted
     </Directory>
 
+    # NEW – send *.php to FPM container
+    <FilesMatch "\.php$">
+        SetHandler "proxy:fcgi://php:9000"
+    </FilesMatch>
+
     LogLevel debug
     ErrorLog /var/www/html/wwwlog/Pete/error.log
     CustomLog /var/www/html/wwwlog/Pete/access.log combined
-    
 </VirtualHost>
 ```
 
 ========================================
 
-**wordpress/phpmyadmin.conf**
+**apache/phpmyadmin.conf**
 ```
 Alias /phpmyadmin /usr/src/phpmyadmin
 
@@ -453,7 +512,7 @@ Alias /phpmyadmin /usr/src/phpmyadmin
 
 ========================================
 
-**wordpress/.gitconfig**
+**php/.gitconfig**
 ```
 [user]
   name  = Pedro Consuegra
@@ -466,7 +525,7 @@ Alias /phpmyadmin /usr/src/phpmyadmin
 
 ========================================
 
-**wordpress/whitelist.conf**
+**apache/whitelist.conf**
 ```
 # remove false-positives first
 SecRuleRemoveById 942100 932100 933150 980170
@@ -496,7 +555,7 @@ SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
 
 ========================================
 
-**wordpress/modsecurity-apache.conf**
+**apache/modsecurity-apache.conf**
 ```
 LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
 
