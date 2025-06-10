@@ -1,14 +1,12 @@
-version: "3.8"
-
 services:
-  # 1) WordPress + PHP-Apache
   wordpress:
     build: ./wordpress
     restart: always
     volumes:
       - wp_data:/var/www/html
       - ssh_data:/root/.ssh
-      - apache_data:/etc/apache2
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
     env_file: .env
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -24,7 +22,6 @@ services:
     ports:
       - "80:80"
 
-  # 2) MariaDB
   db:
     image: mariadb:10.6
     restart: always
@@ -36,7 +33,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
-  # 3) Redis for object caching
   redis:
     image: redis:7-alpine
     restart: always
@@ -45,4 +41,5 @@ volumes:
   wp_data:
   db_data:
   ssh_data:
-  apache_data:
+  apache_sites_available:
+  apache_sites_enabled:

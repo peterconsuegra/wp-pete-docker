@@ -58,7 +58,7 @@ volumes:
 ```
 FROM php:8.1-apache
 
-# 1) Install PHP extensions, MySQL client, and tools
+# 1) Install PHP extensions, MySQL client, Certbot, its Apache plugin, and other tools
 RUN apt-get update \
  && apt-get install -y \
       default-mysql-client \
@@ -67,12 +67,14 @@ RUN apt-get update \
       python3 \
       python3-pip \
       python3-jinja2 \
+      certbot \
+      python3-certbot-apache \
+      unzip \
       libfreetype6-dev \
       libjpeg62-turbo-dev \
       libpng-dev \
       libzip-dev \
       zip \
-      unzip \
       git \
       libonig-dev \
       libxml2-dev \
@@ -267,7 +269,9 @@ if [ ! -f /var/www/html/.installed ]; then
   echo "#######################################"
   echo "Starting WordPress Pete installation..."
   echo "#######################################"
-
+  
+  mkdir -p /data/wwwlog/Pete
+  chown -R www-data:www-data /data/wwwlog
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
@@ -414,14 +418,6 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
 ```
 <VirtualHost *:80>
 
-<If "%{REQUEST_URI} =~ m#^/(?:phpinfo_panel|phpinfo_view)(?:/.*)?(?:\?.*)?$#">
-    # disable ModSecurity entirely
-    SecRuleEngine Off
-
-    # drop those false-positive rules too
-    SecRuleRemoveById 932100 942100 933150 980170
-</If>
-
     ServerName localhost
 
     # Point DocumentRoot to Laravel’s public folder
@@ -433,9 +429,10 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
         Require all granted
     </Directory>
 
-    # You can add logs if you like:
-    # ErrorLog ${APACHE_LOG_DIR}/pete_error.log
-    # CustomLog ${APACHE_LOG_DIR}/pete_access.log combined
+    LogLevel debug
+    ErrorLog /data/wwwlog/Pete/error.log
+    CustomLog /data/wwwlog/Pete/access.log combined
+    
 </VirtualHost>
 ```
 

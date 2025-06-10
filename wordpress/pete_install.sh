@@ -12,9 +12,9 @@ if [ ! -f /var/www/html/.installed ]; then
   echo "#######################################"
   echo "Starting WordPress Pete installation..."
   echo "#######################################"
-  
-  mkdir -p /data/wwwlog/Pete
-  chown -R www-data:www-data /data/wwwlog
+
+  mkdir -p /var/www/html/wwwlog/Pete
+  chown -R www-data:www-data /var/www/html/wwwlog
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
