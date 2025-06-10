@@ -43,7 +43,10 @@ COPY pete.conf               /etc/apache2/sites-available/
 COPY phpmyadmin.conf         /etc/apache2/sites-available/
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY whitelist.conf          /etc/modsecurity/whitelist.conf
-RUN a2ensite pete.conf phpmyadmin.conf && a2enconf modsecurity
+
+RUN a2ensite pete.conf phpmyadmin.conf \
+ && a2enconf modsecurity \
+ && a2dissite 000-default.conf
 
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 WORKDIR /var/www/html
