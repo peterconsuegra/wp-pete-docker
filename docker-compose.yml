@@ -5,26 +5,29 @@ services:
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
     restart: always
-    depends_on:
-      - php
-      - db
-      - redis
     volumes:
       - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
     ports:
       - "80:80"
   php:
     build: ./php
     restart: always
+    depends_on:                # ← php waits for apache, db, redis
+      - apache
+      - db
+      - redis
     expose:
       - "9000"                           
     volumes:
       - wp_data:/var/www/html
-      - ssh_data:/root/.ssh           
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled           
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -33,6 +36,8 @@ services:
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       BLOWFISH_SECRET: ${BLOWFISH_SECRET}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       REDIS_HOST: redis
   db:
     image: mariadb:10.6

@@ -18,7 +18,7 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone -b docker_pro_utm https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone -b docker_mpm_event2 https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
   #git fetch --tags
@@ -39,6 +39,8 @@ DB_DATABASE=${PETE_DB_NAME}
 DB_USERNAME=${PETE_DB_USER}
 DB_PASSWORD=${PETE_DB_PASSWORD}
 PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
+APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
+APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
 PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
 PETE_DEMO=inactive
 PETE_ENVIRONMENT=production

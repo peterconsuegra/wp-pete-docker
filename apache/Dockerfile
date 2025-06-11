@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       apache2 apache2-utils \
       libapache2-mod-security2 \
       vim \
+      sudo \
       modsecurity-crs \
       curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -47,11 +48,15 @@ RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_
 
 # 5) Create dirs & sudo rules Pete expects ------------------------------------
 RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
-    printf '%s\n' \
-     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*' \
+   printf '%s\n' \
+     'www-data ALL=(root) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /usr/sbin/apachectl -k graceful, /var/www/html/Pete/scripts/*' \
      > /etc/sudoers.d/www-data && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
+#RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
+#   printf '%s\n' \
+#  'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+#  >> /etc/sudoers.d/www-data
 
 # 4)  vHosts & custom includes
 COPY pete.conf               /etc/apache2/sites-available/
@@ -59,9 +64,11 @@ COPY phpmyadmin.conf         /etc/apache2/sites-available/
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY whitelist.conf          /etc/modsecurity/whitelist.conf
 
-RUN a2ensite pete.conf phpmyadmin.conf \
- && a2enconf modsecurity \
- && a2dissite 000-default.conf
+# give www-data ownership so the *volume* is created writable
+RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled && \
+    a2ensite pete.conf phpmyadmin.conf && \
+    a2enconf modsecurity && \
+    a2dissite 000-default.conf
 
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 WORKDIR /var/www/html

@@ -12,5 +12,5 @@ if [ "$HTTP_X_RELOAD_SECRET" != "$SECRET" ]; then
 fi
 
 # graceful reload (keeps current connections)
-apachectl -k graceful
+sudo /usr/sbin/apachectl -k graceful
 echo "Reloaded"

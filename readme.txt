@@ -1,11 +1,21 @@
 DEVELOPMENT TO RUN THE PROJECT:
 
+   <FilesMatch "\.php$">
+        SetHandler "proxy:fcgi://php:9000"
+    </FilesMatch>
+
 chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
 docker-compose up --build
 
 REINICIAR APACHE
+
+
+
 apache2ctl restart
+apache confs
+/etc/apache2/sites-available
+/etc/apache2/sites-enabled
 
 CHANGES IN DOCKERFILE
 docker-compose down -v 
@@ -17,6 +27,7 @@ docker-compose up --build
 ENTER TO APP CONTAINER
 docker-compose exec wordpress bash 
 docker-compose exec apache bash
+docker-compose exec php bash
 
 ENTER TO DB CONTAINER
 docker-compose exec db bash
@@ -46,4 +57,8 @@ DOCKER UP
 docker-compose up --build
 
 docker-compose up --build
+
+
+branch name
+docker_mpm_event2
 

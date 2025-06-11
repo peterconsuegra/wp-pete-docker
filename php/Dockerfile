@@ -58,6 +58,12 @@ COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html
+
+# vhost dirs must exist and be owned by www-data for Pete to write configs
+RUN mkdir -p /etc/apache2/sites-available /etc/apache2/sites-enabled && \
+    chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled && \
+    chown -R www-data:www-data /var/www
+
 RUN chown -R www-data:www-data /var/www
 EXPOSE 9000 
 
