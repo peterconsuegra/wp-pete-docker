@@ -81,9 +81,9 @@ EOF
   echo "#######################################"
 
   # Install mod_sec_report dependencies
-  cd /var/www/html/Pete/mod_sec_report \
-    && pip3 install --no-cache-dir -r requirements.txt \
-    && chmod 755 mod_sec_report
+  #cd /var/www/html/Pete/mod_sec_report \
+  #  && pip3 install --no-cache-dir -r requirements.txt \
+  #  && chmod 755 mod_sec_report
 fi
 
 # 4) Post-install setup
@@ -111,7 +111,7 @@ else
 fi
 
 # Ensure correct permissions
-chown -R www-data:www-data /var/www/html
+#chown -R www-data:www-data /var/www/html
 
 # 5) Finally delegate to the official Apache entrypoint
 exec docker-php-entrypoint "$@"

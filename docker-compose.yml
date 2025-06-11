@@ -16,11 +16,12 @@ services:
     build: ./php
     restart: always
     expose:
-      - "9000"                           # FPM listens here
+      - "9000"                           
     volumes:
       - wp_data:/var/www/html
-      - ssh_data:/root/.ssh              # Pete still needs this
-    env_file: .env                       # same env as before
+      - ssh_data:/root/.ssh
+      - /var/run/docker.sock:/var/run/docker.sock             
+    env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
       PETE_DB_NAME: ${PETE_DB_NAME}

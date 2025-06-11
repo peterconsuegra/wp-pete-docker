@@ -13,6 +13,7 @@ RUN apt-get update && \
         python3 python3-pip python3-jinja2 \
         python3-pandas python3-requests \
         openssh-client \
+        docker.io \
         certbot python3-certbot-apache \
         curl ca-certificates && \
     \
@@ -40,8 +41,7 @@ RUN chmod +x /usr/local/bin/pete_install.sh && \
 # 5) Create dirs & sudo rules Pete expects ------------------------------------
 RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     printf '%s\n' \
-     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*' \
-     > /etc/sudoers.d/www-data && \
+     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*, /usr/bin/docker exec wp-pete-docker-apache-1 apachectl -k graceful' > /etc/sudoers.d/www-data && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
 
@@ -58,7 +58,7 @@ COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www
 EXPOSE 9000 
 
 USER www-data

@@ -38,6 +38,14 @@ RUN set -e; \
     \
     rm -f /etc/apache2/mods-enabled/security2.load   # silence duplicate-load warning
 
+# 5) Create dirs & sudo rules Pete expects ------------------------------------
+RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
+    printf '%s\n' \
+     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*' \
+     > /etc/sudoers.d/www-data && \
+    chmod 440 /etc/sudoers.d/www-data && \
+    chown -R www-data:www-data /var/www
+
 # 4)  vHosts & custom includes
 COPY pete.conf               /etc/apache2/sites-available/
 COPY phpmyadmin.conf         /etc/apache2/sites-available/
