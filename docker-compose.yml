@@ -1,6 +1,9 @@
 services:
   apache:
-    build: ./apache
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
     restart: always
     depends_on:
       - php
@@ -10,6 +13,8 @@ services:
       - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
     ports:
       - "80:80"
   php:

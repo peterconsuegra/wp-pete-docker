@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
+RUN a2enmod cgi
+
 # 2) event MPM  +  required modules
 RUN a2dismod mpm_prefork && \
     a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2
@@ -37,6 +39,11 @@ RUN set -e; \
       | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
     \
     rm -f /etc/apache2/mods-enabled/security2.load   # silence duplicate-load warning
+
+ARG APACHE_RELOAD_SECRET
+COPY reload_apache.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
+ && chmod 755 /usr/local/bin/reload_apache.cgi
 
 # 5) Create dirs & sudo rules Pete expects ------------------------------------
 RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
