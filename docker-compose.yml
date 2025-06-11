@@ -19,8 +19,7 @@ services:
       - "9000"                           
     volumes:
       - wp_data:/var/www/html
-      - ssh_data:/root/.ssh
-      - /var/run/docker.sock:/var/run/docker.sock             
+      - ssh_data:/root/.ssh           
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
