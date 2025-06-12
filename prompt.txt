@@ -4,28 +4,34 @@
 ```
 services:
   apache:
-    build: ./apache
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
     restart: always
-    depends_on:
-      - php
-      - db
-      - redis
     volumes:
       - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
     ports:
       - "80:80"
   php:
     build: ./php
     restart: always
+    depends_on:                # ← php waits for apache, db, redis
+      - apache
+      - db
+      - redis
     expose:
       - "9000"                           
     volumes:
       - wp_data:/var/www/html
-      - ssh_data:/root/.ssh           
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled           
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -34,6 +40,8 @@ services:
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       BLOWFISH_SECRET: ${BLOWFISH_SECRET}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       REDIS_HOST: redis
   db:
     image: mariadb:10.6
@@ -122,12 +130,11 @@ COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html
-RUN chown -R www-data:www-data /var/www
-EXPOSE 9000 
 
-USER www-data
+EXPOSE 9000
+# default user is root now; no USER line
 ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
-CMD ["php-fpm"]
+# pete_install.sh will exec php-fpm as www-data
 
 ```
 
@@ -135,81 +142,73 @@ CMD ["php-fpm"]
 
 **apache/Dockerfile**
 ```
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # Apache (event) + ModSecurity 2 + OWASP CRS
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 FROM debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1) Packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      apache2 apache2-utils \
-      libapache2-mod-security2 \
-      vim \
-      modsecurity-crs \
-      curl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+        apache2 apache2-utils \
+        libapache2-mod-security2 \
+        modsecurity-crs \
+        sudo vim curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN a2enmod cgi
-
-# 2) event MPM  +  required modules
+# 2) Enable modules
 RUN a2dismod mpm_prefork && \
-    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2
+    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2 cgi
 
-# 3) ModSecurity base + CRS (rules **and** phrase files)
+# 3) ModSecurity + CRS
 RUN set -e; \
     mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
-    \
-    CRS_SETUP=$(find /usr/share -type f -name "crs-setup.conf.example" | head -n1 || true); \
-    if [ -n "$CRS_SETUP" ]; then \
-        cp "$CRS_SETUP" /etc/modsecurity/crs-setup.conf; \
-    else \
-        echo "# minimal setup" > /etc/modsecurity/crs-setup.conf; \
-    fi && \
-    \
-    # link *.conf rules
-    find /usr/share -type f -path "*modsecurity-crs*/rules/*.conf" -print0 \
+    CRS_SETUP=$(find /usr/share -type f -name 'crs-setup.conf.example' | head -n1 || true) && \
+    : "${CRS_SETUP:=/dev/null}" && \
+    cp "$CRS_SETUP" /etc/modsecurity/crs-setup.conf || echo '# minimal' > /etc/modsecurity/crs-setup.conf && \
+    find /usr/share -type f -path '*modsecurity-crs*/rules/*' -regex '.*\.\(conf\|data\)' -print0 \
       | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
-    # link *.data phrase files (fixes the scanners-user-agents.data error)
-    find /usr/share -type f -path "*modsecurity-crs*/rules/*.data" -print0 \
-      | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
-    \
-    rm -f /etc/apache2/mods-enabled/security2.load   # silence duplicate-load warning
+    rm -f /etc/apache2/mods-enabled/security2.load
 
+# 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
 COPY reload_apache.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
  && chmod 755 /usr/local/bin/reload_apache.cgi
 
-# 5) Create dirs & sudo rules Pete expects ------------------------------------
-RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
-    printf '%s\n' \
-     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*' \
-     > /etc/sudoers.d/www-data && \
-    chmod 440 /etc/sudoers.d/www-data && \
-    chown -R www-data:www-data /var/www
-
-# 4)  vHosts & custom includes
-COPY pete.conf               /etc/apache2/sites-available/
-COPY phpmyadmin.conf         /etc/apache2/sites-available/
+# 5) Pete & phpMyAdmin base vhosts
+COPY pete.conf /etc/apache2/sites-available/000-pete.conf
+COPY phpmyadmin.conf   /etc/apache2/sites-available/
+COPY whitelist.conf    /etc/modsecurity/whitelist.conf
 COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
-COPY whitelist.conf          /etc/modsecurity/whitelist.conf
 
-RUN a2ensite pete.conf phpmyadmin.conf \
- && a2enconf modsecurity \
- && a2dissite 000-default.conf
+# 6) Make vhost dirs shared & writable *before* volume is created
+RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
 
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+# 7) Enable baseline sites & configs (done once at build-time)
+RUN a2ensite 000-pete.conf phpmyadmin.conf && \
+    a2enconf modsecurity && \
+    a2dissite 000-default.conf
+
+# 8) Allow www-data (CGI) to reload Apache
+RUN printf '%s\n' \
+  'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+  > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
+
+RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
 WORKDIR /var/www/html
 EXPOSE 80
-CMD ["apachectl","-D","FOREGROUND"]
 
-
+# wait-helper script
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 
+# --- new: ensure volume will be writable by Pete ---
+RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
+
 CMD ["start.sh"]
+
 ```
 
 ========================================
@@ -236,6 +235,8 @@ echo "Waiting for MySQL..."
 until mysqladmin ping -h db --silent; do
   sleep 3
 done
+chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
+
 
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
@@ -248,7 +249,7 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone -b docker_pro_utm https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone -b docker_mpm_event2 https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
   #git fetch --tags
@@ -269,6 +270,8 @@ DB_DATABASE=${PETE_DB_NAME}
 DB_USERNAME=${PETE_DB_USER}
 DB_PASSWORD=${PETE_DB_PASSWORD}
 PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
+APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
+APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
 PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
 PETE_DEMO=inactive
 PETE_ENVIRONMENT=production
@@ -344,7 +347,7 @@ fi
 #chown -R www-data:www-data /var/www/html
 
 # 5) Finally delegate to the official Apache entrypoint
-exec docker-php-entrypoint "$@"
+exec su -s /bin/bash www-data -c "php-fpm"
 
 ```
 
@@ -391,7 +394,7 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
 
 **apache/pete.conf**
 ```
-<VirtualHost *:80>
+<VirtualHost _default_:80>
     ServerName localhost
     DocumentRoot /var/www/html/Pete/public
 
@@ -401,22 +404,23 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
         Require all granted
     </Directory>
 
-    # NEW – send *.php to FPM container
+    # send PHP to FPM
     <FilesMatch "\.php$">
         SetHandler "proxy:fcgi://php:9000"
     </FilesMatch>
 
+    # graceful-reload hook (now inside the vhost)
+    ScriptAlias /internal-reload /usr/local/bin/reload_apache.cgi
+    <Directory "/usr/local/bin">
+        Options +ExecCGI
+        Require local
+        Require ip 172.16.0.0/12
+    </Directory>
+
     LogLevel debug
-    ErrorLog /var/www/html/wwwlog/Pete/error.log
+    ErrorLog  /var/www/html/wwwlog/Pete/error.log
     CustomLog /var/www/html/wwwlog/Pete/access.log combined
 </VirtualHost>
-
-
-ScriptAlias /internal-reload /usr/local/bin/reload_apache.cgi
-<Directory "/usr/local/bin">
-    Options +ExecCGI
-    Require local            # only 127.0.0.1 and container IPs
-</Directory>
 ```
 
 ========================================

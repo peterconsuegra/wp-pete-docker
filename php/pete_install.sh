@@ -6,6 +6,8 @@ echo "Waiting for MySQL..."
 until mysqladmin ping -h db --silent; do
   sleep 3
 done
+chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
+
 
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
@@ -116,4 +118,4 @@ fi
 #chown -R www-data:www-data /var/www/html
 
 # 5) Finally delegate to the official Apache entrypoint
-exec docker-php-entrypoint "$@"
+exec php-fpm 
