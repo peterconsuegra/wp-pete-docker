@@ -347,7 +347,7 @@ fi
 #chown -R www-data:www-data /var/www/html
 
 # 5) Finally delegate to the official Apache entrypoint
-exec su -s /bin/bash www-data -c "php-fpm"
+exec php-fpm 
 
 ```
 

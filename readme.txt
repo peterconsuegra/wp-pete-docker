@@ -62,3 +62,7 @@ docker-compose up --build
 branch name
 docker_mpm_event2
 
+RELOAD FROM CONTAINER
+
+curl -sf -H "X-Reload-Secret: SuperReload123" \
+     http://apache/internal-reload  || true
