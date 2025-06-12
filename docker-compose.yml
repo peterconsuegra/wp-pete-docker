@@ -9,6 +9,7 @@ services:
       - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
@@ -31,7 +32,8 @@ services:
       - wp_data:/var/www/html
       - ssh_data:/root/.ssh
       - apache_sites_available:/etc/apache2/sites-available
-      - apache_sites_enabled:/etc/apache2/sites-enabled           
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin           
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -64,3 +66,4 @@ volumes:
   ssh_data:
   apache_sites_available:
   apache_sites_enabled:
+  pma_data:

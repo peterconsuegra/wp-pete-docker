@@ -45,16 +45,11 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
 
-# 6) phpMyAdmin (served via Apache container) ----------------------------------
-ARG PMA_VERSION=5.2.2
-RUN set -eux; \
-    curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" -o /tmp/pma.tar.gz; \
-    tar xzf /tmp/pma.tar.gz -C /usr/src/; \
-    mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
-    rm /tmp/pma.tar.gz && \
-    mkdir -p /usr/src/phpmyadmin/tmp && \
-    chown -R www-data:www-data /usr/src/phpmyadmin
-COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
+COPY config.inc.php.custom /opt/pma-config/
+# Replace whatever is currently set for $cfg['blowfish_secret']
+# with the literal placeholder '__BLOWFISH__'
+RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
+        /opt/pma-config/config.inc.php.custom
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html

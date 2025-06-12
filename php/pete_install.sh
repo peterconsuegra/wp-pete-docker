@@ -117,5 +117,39 @@ fi
 # Ensure correct permissions
 #chown -R www-data:www-data /var/www/html
 
+###############################################################################
+# phpMyAdmin bootstrap (runs only once per empty pma_data volume)
+###############################################################################
+PMA_DIR="/usr/src/phpmyadmin"                      # shared volume mount-point
+PMA_CFG_TMPL="/opt/pma-config/config.inc.php.custom"
+PMA_CFG_DEST="${PMA_DIR}/config.inc.php"
+PMA_VERSION="5.2.2"
+
+if [ ! -f "${PMA_DIR}/index.php" ]; then
+    echo "→ Installing phpMyAdmin ${PMA_VERSION} into ${PMA_DIR} …"
+    curl -fsSL \
+      "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz
+    mkdir -p "${PMA_DIR}"
+    tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+    rm /tmp/pma.tar.gz
+fi
+
+# ---------------------------------------------------------------------------
+# Copy / template the main config only if it does not exist yet
+# ---------------------------------------------------------------------------
+if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
+    echo "→ Creating phpMyAdmin config …"
+
+    # Use the secret from .env, or generate one on the fly
+    BF_SECRET=${BLOWFISH_SECRET:-$(head -c32 /dev/urandom | base64)}
+
+    # Copy template → destination, substituting the placeholder
+    sed "s#__BLOWFISH__#${BF_SECRET}#" "${PMA_CFG_TMPL}" > "${PMA_CFG_DEST}"
+    chown www-data:www-data "${PMA_CFG_DEST}"
+fi
+###############################################################################
+
+
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 

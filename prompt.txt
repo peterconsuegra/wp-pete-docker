@@ -13,11 +13,16 @@ services:
       - wp_data:/var/www/html            # shared codebase
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
     ports:
       - "80:80"
+    networks:
+      default:
+        aliases:
+          - demo3.petelocal.net
   php:
     build: ./php
     restart: always
@@ -31,7 +36,8 @@ services:
       - wp_data:/var/www/html
       - ssh_data:/root/.ssh
       - apache_sites_available:/etc/apache2/sites-available
-      - apache_sites_enabled:/etc/apache2/sites-enabled           
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin           
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -64,6 +70,7 @@ volumes:
   ssh_data:
   apache_sites_available:
   apache_sites_enabled:
+  pma_data:
 ```
 
 ========================================
@@ -117,16 +124,7 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
 
-# 6) phpMyAdmin (served via Apache container) ----------------------------------
-ARG PMA_VERSION=5.2.2
-RUN set -eux; \
-    curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" -o /tmp/pma.tar.gz; \
-    tar xzf /tmp/pma.tar.gz -C /usr/src/; \
-    mv /usr/src/phpMyAdmin-${PMA_VERSION}-all-languages /usr/src/phpmyadmin; \
-    rm /tmp/pma.tar.gz && \
-    mkdir -p /usr/src/phpmyadmin/tmp && \
-    chown -R www-data:www-data /usr/src/phpmyadmin
-COPY config.inc.php.custom /usr/src/phpmyadmin/config.inc.php
+COPY config.inc.php.custom /opt/pma-config/
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html
@@ -159,6 +157,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 2) Enable modules
 RUN a2dismod mpm_prefork && \
     a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2 cgi
+
+COPY status.conf /etc/apache2/mods-enabled/status.conf
 
 # 3) ModSecurity + CRS
 RUN set -e; \
@@ -345,6 +345,30 @@ fi
 
 # Ensure correct permissions
 #chown -R www-data:www-data /var/www/html
+
+### ------------------------------------------------------------------
+### Seed phpMyAdmin shared volume (runs only once)
+###
+
+PMA_CONFIG_SRC="/opt/pma-config/config.inc.php.custom"
+if [ -f "$PMA_CONFIG_SRC" ]; then
+    cp "$PMA_CONFIG_SRC" "${PMA_DIR}/config.inc.php"
+fi
+
+PMA_DIR="/usr/src/phpmyadmin"
+if [ ! -f "${PMA_DIR}/index.php" ]; then
+  echo "Installing phpMyAdmin into shared volume…"
+  PMA_VERSION="5.2.2"
+  curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+       -o /tmp/pma.tar.gz
+  mkdir -p "${PMA_DIR}"
+  tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+  rm /tmp/pma.tar.gz
+  # your customised config
+  cp /path/to/config.inc.php.custom "${PMA_DIR}/config.inc.php"
+  chown -R www-data:www-data "${PMA_DIR}"
+fi
+### ------------------------------------------------------------------
 
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 

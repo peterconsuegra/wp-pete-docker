@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN a2dismod mpm_prefork && \
     a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2 cgi
 
+COPY status.conf /etc/apache2/mods-enabled/status.conf
+
 # 3) ModSecurity + CRS
 RUN set -e; \
     mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \

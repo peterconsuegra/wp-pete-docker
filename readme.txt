@@ -1,8 +1,10 @@
-DEVELOPMENT TO RUN THE PROJECT:
+RUN PROJECT
+docker-compose up --build
 
-   <FilesMatch "\.php$">
-        SetHandler "proxy:fcgi://php:9000"
-    </FilesMatch>
+REHACER phpMyAdmin
+docker-compose down
+docker volume rm wp-pete-docker_pma_data
+
 
 chmod +x db-config/init.sh
 chmod +x wordpress/pete_install.sh
