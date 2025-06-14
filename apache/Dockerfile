@@ -8,26 +8,57 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apache2 apache2-utils \
         libapache2-mod-security2 \
-        modsecurity-crs \
         sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # 2) Enable modules
 RUN a2dismod mpm_prefork && \
-    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2 cgi
+    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env cgi
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
-# 3) ModSecurity + CRS
-RUN set -e; \
+# ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ARG CRS_VERSION=4.15.0
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libapache2-mod-security2 \
+      curl \
+      ca-certificates && \
+    \
+    # Prepare ModSecurity dirs
     mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
+    # Copy base config
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
-    CRS_SETUP=$(find /usr/share -type f -name 'crs-setup.conf.example' | head -n1 || true) && \
-    : "${CRS_SETUP:=/dev/null}" && \
-    cp "$CRS_SETUP" /etc/modsecurity/crs-setup.conf || echo '# minimal' > /etc/modsecurity/crs-setup.conf && \
-    find /usr/share -type f -path '*modsecurity-crs*/rules/*' -regex '.*\.\(conf\|data\)' -print0 \
-      | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
-    rm -f /etc/apache2/mods-enabled/security2.load
+    \
+    # Download and extract OWASP CRS v${CRS_VERSION}
+    curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+      -o /tmp/crs.tar.gz && \
+    tar zxvf /tmp/crs.tar.gz -C /usr/share && \
+    mv /usr/share/coreruleset-${CRS_VERSION} /usr/share/modsecurity-crs && \
+    rm /tmp/crs.tar.gz && \
+    \
+    # Copy CRS example setup into place
+    cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf && \
+    \
+    # Symlink all rule and data files
+    ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
+
+# ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY whitelist.conf /etc/modsecurity/whitelist.conf
+
+# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
+RUN a2enmod security2 \
+ && rm -f /etc/apache2/mods-enabled/security2.conf \
+ && a2enconf modsecurity \
+ && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ \
+ # enable JSON output for the audit log
+ && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+ \
+ && apache2ctl configtest
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
