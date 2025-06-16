@@ -20,13 +20,12 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone -b docker_mpm_event2 https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
-  #git fetch --tags
-  #latestTag=$(git describe --tags $(git rev-list --tags --max-count=1))
-  #git checkout "$latestTag"
-  latestTag=10.4
+  git fetch --tags
+  latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  git checkout $latestTag
 
   # Reset composer & env
   rm -f auth.json composer.json
