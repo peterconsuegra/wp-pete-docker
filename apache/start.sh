@@ -7,6 +7,11 @@ while [ ! -d "/var/www/html/Pete/public" ]; do
   sleep 2
 done
 
+mkdir -p /var/log/apache2
+touch    /var/log/apache2/modsec_audit.log
+chown -R www-data:www-data /var/log/apache2
+chmod 750 /var/log/apache2
+
 # Ensure log directory exists
 mkdir -p /var/www/html/wwwlog/Pete
 

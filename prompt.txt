@@ -14,6 +14,8 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin:ro
+      - apache_logs:/var/log/apache2 
+      - modsecurity_conf:/etc/modsecurity
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
@@ -37,7 +39,9 @@ services:
       - ssh_data:/root/.ssh
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
-      - pma_data:/usr/src/phpmyadmin           
+      - pma_data:/usr/src/phpmyadmin
+      - apache_logs:/var/log/apache2
+      - modsecurity_conf:/etc/modsecurity            
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -71,6 +75,8 @@ volumes:
   apache_sites_available:
   apache_sites_enabled:
   pma_data:
+  apache_logs:
+  modsecurity_conf: 
 ```
 
 ========================================
@@ -125,6 +131,10 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chown -R www-data:www-data /var/www
 
 COPY config.inc.php.custom /opt/pma-config/
+# Replace whatever is currently set for $cfg['blowfish_secret']
+# with the literal placeholder '__BLOWFISH__'
+RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
+        /opt/pma-config/config.inc.php.custom
 
 # 7) Working dir, ownership, expose FPM ---------------------------------------
 WORKDIR /var/www/html
@@ -150,26 +160,64 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apache2 apache2-utils \
         libapache2-mod-security2 \
-        modsecurity-crs \
         sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # 2) Enable modules
 RUN a2dismod mpm_prefork && \
-    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env security2 cgi
+    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env cgi
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
-# 3) ModSecurity + CRS
-RUN set -e; \
+# ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ARG CRS_VERSION=4.15.0
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libapache2-mod-security2 \
+      curl \
+      ca-certificates && \
+    \
+    # Prepare ModSecurity dirs
     mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
+    # Copy base config
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
-    CRS_SETUP=$(find /usr/share -type f -name 'crs-setup.conf.example' | head -n1 || true) && \
-    : "${CRS_SETUP:=/dev/null}" && \
-    cp "$CRS_SETUP" /etc/modsecurity/crs-setup.conf || echo '# minimal' > /etc/modsecurity/crs-setup.conf && \
-    find /usr/share -type f -path '*modsecurity-crs*/rules/*' -regex '.*\.\(conf\|data\)' -print0 \
-      | xargs -0 -I{} ln -sf {} /etc/modsecurity/rules/ 2>/dev/null || true && \
-    rm -f /etc/apache2/mods-enabled/security2.load
+    \
+    # Download and extract OWASP CRS v${CRS_VERSION}
+    curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+      -o /tmp/crs.tar.gz && \
+    tar zxvf /tmp/crs.tar.gz -C /usr/share && \
+    mv /usr/share/coreruleset-${CRS_VERSION} /usr/share/modsecurity-crs && \
+    rm /tmp/crs.tar.gz && \
+    \
+    # Copy CRS example setup into place
+    cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf && \
+    \
+    # Symlink all rule and data files
+    ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
+
+# ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY whitelist.conf /etc/modsecurity/whitelist.conf
+
+# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
+RUN a2enmod security2 \
+ && rm -f /etc/apache2/mods-enabled/security2.conf \
+ && a2enconf modsecurity \
+ && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ \
+ # enable JSON output for the audit log
+ && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+ \
+ && apache2ctl configtest
+
+# ── make sure Apache can write its own logs ──────────────────────────────
+RUN set -e \
+ && mkdir -p /var/log/apache2 \
+ && touch      /var/log/apache2/modsec_audit.log \
+ && chown -R www-data:www-data /var/log/apache2 \
+ && chmod 750 /var/log/apache2
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
@@ -187,7 +235,7 @@ COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
 
 # 7) Enable baseline sites & configs (done once at build-time)
-RUN a2ensite 000-pete.conf phpmyadmin.conf && \
+RUN a2ensite 000-pete.conf && \
     a2enconf modsecurity && \
     a2dissite 000-default.conf
 
@@ -298,8 +346,8 @@ EOF
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=domain_template --option_value=petelocal.net
-  php artisan addoption --option_name=phpmyadmin_status --option_value=on
-  php artisan addoption --option_name=security_status --option_value=on
+  php artisan addoption --option_name=phpmyadmin_status --option_value=off
+  php artisan addoption --option_name=security_status --option_value=off
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -346,29 +394,39 @@ fi
 # Ensure correct permissions
 #chown -R www-data:www-data /var/www/html
 
-### ------------------------------------------------------------------
-### Seed phpMyAdmin shared volume (runs only once)
-###
+###############################################################################
+# phpMyAdmin bootstrap (runs only once per empty pma_data volume)
+###############################################################################
+PMA_DIR="/usr/src/phpmyadmin"                      # shared volume mount-point
+PMA_CFG_TMPL="/opt/pma-config/config.inc.php.custom"
+PMA_CFG_DEST="${PMA_DIR}/config.inc.php"
+PMA_VERSION="5.2.2"
 
-PMA_CONFIG_SRC="/opt/pma-config/config.inc.php.custom"
-if [ -f "$PMA_CONFIG_SRC" ]; then
-    cp "$PMA_CONFIG_SRC" "${PMA_DIR}/config.inc.php"
-fi
-
-PMA_DIR="/usr/src/phpmyadmin"
 if [ ! -f "${PMA_DIR}/index.php" ]; then
-  echo "Installing phpMyAdmin into shared volume…"
-  PMA_VERSION="5.2.2"
-  curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
-       -o /tmp/pma.tar.gz
-  mkdir -p "${PMA_DIR}"
-  tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
-  rm /tmp/pma.tar.gz
-  # your customised config
-  cp /path/to/config.inc.php.custom "${PMA_DIR}/config.inc.php"
-  chown -R www-data:www-data "${PMA_DIR}"
+    echo "→ Installing phpMyAdmin ${PMA_VERSION} into ${PMA_DIR} …"
+    curl -fsSL \
+      "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz
+    mkdir -p "${PMA_DIR}"
+    tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+    rm /tmp/pma.tar.gz
 fi
-### ------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Copy / template the main config only if it does not exist yet
+# ---------------------------------------------------------------------------
+if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
+    echo "→ Creating phpMyAdmin config …"
+
+    # Use the secret from .env, or generate one on the fly
+    BF_SECRET=${BLOWFISH_SECRET:-$(head -c32 /dev/urandom | base64)}
+
+    # Copy template → destination, substituting the placeholder
+    sed "s#__BLOWFISH__#${BF_SECRET}#" "${PMA_CFG_TMPL}" > "${PMA_CFG_DEST}"
+    chown www-data:www-data "${PMA_CFG_DEST}"
+fi
+###############################################################################
+
 
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 

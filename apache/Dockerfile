@@ -60,6 +60,13 @@ RUN a2enmod security2 \
  \
  && apache2ctl configtest
 
+# ── make sure Apache can write its own logs ──────────────────────────────
+RUN set -e \
+ && mkdir -p /var/log/apache2 \
+ && touch      /var/log/apache2/modsec_audit.log \
+ && chown -R www-data:www-data /var/log/apache2 \
+ && chmod 750 /var/log/apache2
+
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
 COPY reload_apache.cgi /usr/local/bin/
@@ -76,7 +83,7 @@ COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
 
 # 7) Enable baseline sites & configs (done once at build-time)
-RUN a2ensite 000-pete.conf phpmyadmin.conf && \
+RUN a2ensite 000-pete.conf && \
     a2enconf modsecurity && \
     a2dissite 000-default.conf
 

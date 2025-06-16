@@ -10,6 +10,8 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin:ro
+      - apache_logs:/var/log/apache2 
+      - modsecurity_conf:/etc/modsecurity
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
@@ -33,7 +35,9 @@ services:
       - ssh_data:/root/.ssh
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
-      - pma_data:/usr/src/phpmyadmin           
+      - pma_data:/usr/src/phpmyadmin
+      - apache_logs:/var/log/apache2
+      - modsecurity_conf:/etc/modsecurity            
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -67,3 +71,5 @@ volumes:
   apache_sites_available:
   apache_sites_enabled:
   pma_data:
+  apache_logs:
+  modsecurity_conf: 
