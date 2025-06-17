@@ -297,13 +297,12 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone -b docker_mpm_event2 https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
-  #git fetch --tags
-  #latestTag=$(git describe --tags $(git rev-list --tags --max-count=1))
-  #git checkout "$latestTag"
-  latestTag=10.4
+  git fetch --tags
+  latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  git checkout $latestTag
 
   # Reset composer & env
   rm -f auth.json composer.json
@@ -334,7 +333,7 @@ EOF
 
   # Add general options
   php artisan addoption --option_name=os --option_value=docker
-  php artisan addoption --option_name=server_status --option_value=on
+  php artisan addoption --option_name=server_status --option_value=off
   php artisan addoption --option_name=parent_version --option_value=6
   php artisan addoption --option_name=version --option_value="$latestTag"
   php artisan addoption --option_name=app_root --option_value=/var/www/html
@@ -347,7 +346,7 @@ EOF
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=domain_template --option_value=petelocal.net
   php artisan addoption --option_name=phpmyadmin_status --option_value=off
-  php artisan addoption --option_name=security_status --option_value=off
+  php artisan addoption --option_name=security_status --option_value=on
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -356,24 +355,18 @@ EOF
   composer dump-autoload --ignore-platform-reqs
 
   # Mark as installed
+  chown -R www-data:www-data /var/www/html/Pete 
   echo "done" > /var/www/html/.installed
   echo "#######################################"
   echo "WordPress Pete installation completed"
   echo "#######################################"
 
-  # Install mod_sec_report dependencies
-  #cd /var/www/html/Pete/mod_sec_report \
-  #  && pip3 install --no-cache-dir -r requirements.txt \
-  #  && chmod 755 mod_sec_report
 fi
 
 # 4) Post-install setup
 echo "#######################################"
 echo "Launching WordPress Pete..."
 echo "#######################################"
-
-# Domain template
-#cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value="${DOMAIN_TEMPLATE:-}"
 
 # SSH key (for private repos, if needed)
 SSH_DIR="${HOME}/.ssh"
@@ -390,9 +383,6 @@ if [ "$SERVER_STATUS" = "On" ]; then
 else
   cd /var/www/html/Pete && php artisan addoption --option_name=server_status --option_value=off
 fi
-
-# Ensure correct permissions
-#chown -R www-data:www-data /var/www/html
 
 ###############################################################################
 # phpMyAdmin bootstrap (runs only once per empty pma_data volume)
