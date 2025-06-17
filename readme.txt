@@ -49,3 +49,5 @@ http://pete.petelocal.net/phpmyadmin
 PROMPT GENERATOR
 PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-config/my.cnf,php/pete_install.sh,db-config/init.sh,.env,apache/pete.conf,apache/phpmyadmin.conf,php/.gitconfig,apache/whitelist.conf,apache/modsecurity-apache.conf
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
+
+cp .env.example.development .env

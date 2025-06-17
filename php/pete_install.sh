@@ -67,7 +67,6 @@ EOF
   php artisan addoption --option_name=os_distribution --option_value=ubuntu
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
-  php artisan addoption --option_name=domain_template --option_value=petelocal.net
   php artisan addoption --option_name=phpmyadmin_status --option_value=off
   php artisan addoption --option_name=security_status --option_value=on
 
@@ -100,11 +99,10 @@ if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
   chown -R www-data:www-data "${SSH_DIR}"
 fi
 
-# Server-status flag
-if [ "$SERVER_STATUS" = "On" ]; then
-  cd /var/www/html/Pete && php artisan addoption --option_name=server_status --option_value=on
-else
-  cd /var/www/html/Pete && php artisan addoption --option_name=server_status --option_value=off
+#domain_template for development
+pete_environment=${PETE_ENVIRONMENT}
+if [ "$pete_environment" = "development" ]; then
+  cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
 fi
 
 ###############################################################################
