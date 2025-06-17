@@ -51,3 +51,5 @@ PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-co
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 
 cp .env.example.development .env
+
+cp .env.example.production .env
