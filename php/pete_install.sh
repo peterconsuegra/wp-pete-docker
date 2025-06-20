@@ -103,6 +103,9 @@ fi
 pete_environment=${PETE_ENVIRONMENT}
 if [ "$pete_environment" = "development" ]; then
   cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+else
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
 fi
 
 ###############################################################################

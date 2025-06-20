@@ -21,10 +21,12 @@ services:
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
     ports:
       - "80:80"
+      - "443:443"
     networks:
       default:
         aliases:
           - demo3.petelocal.net
+          - demo3.wordpresspete.org
   php:
     build: ./php
     restart: always
@@ -49,7 +51,7 @@ services:
       PETE_DB_USER: ${PETE_DB_USER}
       PETE_DB_PASSWORD: ${PETE_DB_PASS}
       PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      BLOWFISH_SECRET: ${BLOWFISH_SECRET}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       REDIS_HOST: redis
@@ -344,7 +346,6 @@ EOF
   php artisan addoption --option_name=os_distribution --option_value=ubuntu
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
-  php artisan addoption --option_name=domain_template --option_value=petelocal.net
   php artisan addoption --option_name=phpmyadmin_status --option_value=off
   php artisan addoption --option_name=security_status --option_value=on
 
@@ -377,11 +378,13 @@ if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
   chown -R www-data:www-data "${SSH_DIR}"
 fi
 
-# Server-status flag
-if [ "$SERVER_STATUS" = "On" ]; then
-  cd /var/www/html/Pete && php artisan addoption --option_name=server_status --option_value=on
+#domain_template for development
+pete_environment=${PETE_ENVIRONMENT}
+if [ "$pete_environment" = "development" ]; then
+  cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
 else
-  cd /var/www/html/Pete && php artisan addoption --option_name=server_status --option_value=off
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
 fi
 
 ###############################################################################
@@ -455,10 +458,10 @@ MYSQL_ROOT_PASSWORD=EvenMoreSecret
 PETE_DB_USER=pete
 PETE_DB_NAME=pete_db
 PETE_DB_PASS=pixma301
-BLOWFISH_SECRET=9f2c4e5a7d8b1c3e4f6a8b0c9d2e1f3a
+PETE_ENVIRONMENT=development
 APACHE_RELOAD_SECRET=SuperReload123
 APACHE_RELOAD_URL=http://apache/internal-reload 
-PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-config/my.cnf,php/pete_install.sh,db-config/init.sh,.env,apache/pete.conf,apache/phpmyadmin.conf,php/.gitconfig,apache/whitelist.conf,apache/modsecurity-apache.conf
+PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-config/my.cnf,php/pete_install.sh,db-config/init.sh,.env,apache/pete.conf,apache/phpmyadmin.conf,apache/reload_apache.cgi
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```
 
@@ -515,65 +518,23 @@ Alias /phpmyadmin /usr/src/phpmyadmin
 
 ========================================
 
-**php/.gitconfig**
+**apache/reload_apache.cgi**
 ```
-[user]
-  name  = Pedro Consuegra
-  email = pedroconsuegrat@gmail.com
+#!/bin/bash
+# simple CGI that reloads Apache only if the shared secret matches
 
-[safe]
-  directory = /var/www/html
-  directory = /var/www/html/Pete
-```
+SECRET="__RELOAD_SECRET__"    # will be substituted in the Dockerfile
 
-========================================
+echo "Content-Type: text/plain"
+echo
 
-**apache/whitelist.conf**
-```
-# remove false-positives first
-SecRuleRemoveById 942100 932100 933150 980170
+if [ "$HTTP_X_RELOAD_SECRET" != "$SECRET" ]; then
+  echo "Forbidden"
+  exit 0
+fi
 
-# now per-path disables, each with a different ID
-SecRule REQUEST_URI "@beginsWith /wp-admin" \
-    "id:1000001,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /phpinfo_panel" \
-    "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /phpinfo_view" \
-    "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /validate_pete" \
-    "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /pete_plugins_install" \
-    "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /pete_update" \
-    "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /update_post" \
-    "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /phpmyadmin" \
-    "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "@beginsWith /phpmyinfo" \
-    "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
-SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
-    "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
-```
+# graceful reload (keeps current connections)
+sudo /usr/sbin/apachectl -k graceful
+echo "Reloaded"
 
-========================================
-
-**apache/modsecurity-apache.conf**
-```
-LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
-
- <IfModule security2_module>
-     SecRuleEngine On
-     SecRequestBodyAccess On
-     SecResponseBodyAccess Off
-
-     Include /etc/modsecurity/modsecurity.conf
-
-
-     Include /etc/modsecurity/crs-setup.conf
-
-     Include /etc/modsecurity/whitelist.conf
-
-     IncludeOptional /etc/modsecurity/rules/*.conf
- </IfModule>
 ```
