@@ -92,6 +92,9 @@ RUN a2ensite 000-pete.conf && \
     a2enconf modsecurity && \
     a2dissite 000-default.conf
 
+COPY timeout.conf /etc/apache2/conf-available/
+RUN a2enconf timeout
+
 # 8) Allow www-data (CGI) to reload Apache
 RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
