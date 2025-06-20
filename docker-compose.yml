@@ -15,6 +15,7 @@ services:
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
     ports:
       - "80:80"
       - "443:443"
@@ -50,6 +51,7 @@ services:
       PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
   db:
     image: mariadb:10.6
