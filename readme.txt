@@ -7,12 +7,10 @@ STOP PROJECT
 docker-compose down
 
 ENTER TO CONTAINER VIA TERMINAL
-docker-compose exec wordpress bash 
 docker-compose exec apache bash
 docker-compose exec php bash
 
 CHANGES IN DOCKERFILE
-docker-compose build --no-cache wordpress
 docker-compose build --no-cache apache
 docker-compose build --no-cache php
 
@@ -49,12 +47,10 @@ STOP PROJECT
 docker compose down
 
 ENTER TO CONTAINER VIA TERMINAL
-docker compose exec wordpress bash 
 docker compose exec apache bash
 docker compose exec php bash
 
 CHANGES IN DOCKERFILE
-docker compose build --no-cache wordpress
 docker compose build --no-cache apache
 docker compose build --no-cache php
 

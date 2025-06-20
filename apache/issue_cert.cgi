@@ -35,10 +35,7 @@ if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
   exit 0
 fi
 
-echo "Issuing / renewing certificate for $DOMAIN …"
-sudo certbot --apache --non-interactive --agree-tos \
-             --redirect \
-             --email "$EMAIL" \
-             -d "$DOMAIN" -d "www.$DOMAIN"
+#echo "Issuing / renewing certificate for $DOMAIN …"
+sudo certbot --apache --non-interactive --agree-tos --email "$EMAIL" -d "$DOMAIN"
 
 echo "Done"
