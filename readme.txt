@@ -114,3 +114,6 @@ sudo ufw limit 2222/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw enable
+
+curl -s -H "X-Reload-Secret: Super3232" \
+     "http://apache/internal-certbot?domain=demo1.wordpresspete.org&email=pedroconsuegrat@gmail.com"
