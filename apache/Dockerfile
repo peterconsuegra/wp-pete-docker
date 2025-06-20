@@ -8,6 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apache2 apache2-utils \
         libapache2-mod-security2 \
+        certbot python3-certbot-apache \
         sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -73,6 +74,10 @@ COPY reload_apache.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
  && chmod 755 /usr/local/bin/reload_apache.cgi
 
+COPY issue_cert.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
+    && chmod 755 /usr/local/bin/issue_cert.cgi
+
 # 5) Pete & phpMyAdmin base vhosts
 COPY pete.conf /etc/apache2/sites-available/000-pete.conf
 COPY phpmyadmin.conf   /etc/apache2/sites-available/
@@ -90,6 +95,7 @@ RUN a2ensite 000-pete.conf && \
 # 8) Allow www-data (CGI) to reload Apache
 RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
