@@ -68,12 +68,6 @@ RUN set -e \
  && chown -R www-data:www-data /var/log/apache2 \
  && chmod 750 /var/log/apache2
 
-# 5) Copy the Certbot run script and ensure it's executable
-COPY run_certbot.sh /usr/local/bin/run_certbot.sh
-RUN chmod +x /usr/local/bin/run_certbot.sh
-
-RUN /usr/local/bin/run_certbot.sh
-
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
 COPY reload_apache.cgi /usr/local/bin/
