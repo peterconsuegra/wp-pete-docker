@@ -35,7 +35,8 @@ if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
   exit 0
 fi
 
-#echo "Issuing / renewing certificate for $DOMAIN …"
+echo "Issuing / renewing certificate for $DOMAIN …"
+echo certbot --apache --non-interactive --agree-tos --email "$EMAIL" -d "$DOMAIN" && echo "issued"
 sudo certbot --apache --non-interactive --agree-tos --email "$EMAIL" -d "$DOMAIN" && echo "issued"
 
 echo "Done"
