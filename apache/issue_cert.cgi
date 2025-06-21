@@ -1,42 +1,36 @@
 #!/bin/bash
 # --------------------------------------------------------------------
-# Trigger Certbot from inside the Apache container
-#   curl -H "X-Reload-Secret: $APACHE_RELOAD_SECRET" \
-#        "http://apache/internal-certbot?domain=demo3.wordpresspete.org&email=pedroconsuegrat@gmail.com"
+# Trigger Certbot inside the Apache container
 # --------------------------------------------------------------------
+SECRET="__RELOAD_SECRET__"        # substituted at build time
 
-SECRET="__RELOAD_SECRET__"        # will be substituted at build-time
-
-# ── CGI header
 echo "Content-Type: text/plain"
 echo
 
-# ── Same auth check as reload_apache.cgi
-if [ "$HTTP_X_RELOAD_SECRET" != "$SECRET" ]; then
-  echo "Forbidden"
-  exit 0
-fi
+# ── Auth check
+[ "$HTTP_X_RELOAD_SECRET" = "$SECRET" ] || { echo Forbidden; exit 0; }
 
-# ── Parse query string (?domain=…&email=…)
-DOMAIN=""
-EMAIL=""
+# ── Parse query string
+DOMAIN="" ; EMAIL=""
 IFS='&' read -ra KV <<< "$QUERY_STRING"
-for pair in "${KV[@]}"; do
-  key="${pair%%=*}"
-  val="${pair#*=}"
-  case "$key" in
-    domain) DOMAIN="$val" ;;
-    email)  EMAIL="$val"  ;;
-  esac
+for kv in "${KV[@]}"; do
+  k="${kv%%=*}" ; v="${kv#*=}"
+  [ "$k" = "domain" ] && DOMAIN="$v"
+  [ "$k" = "email"  ] && EMAIL="$v"
 done
+[ -n "$DOMAIN" ] && [ -n "$EMAIL" ] || { echo "Usage: ?domain=&email="; exit 0; }
 
-if [ -z "$DOMAIN" ] || [ -z "$EMAIL" ]; then
-  echo "Usage: ?domain=<example.com>&email=<you@host>"
-  exit 0
-fi
+echo ">>> certbot --apache -d $DOMAIN -d www.$DOMAIN (this may take a minute) …"
 
-echo "Issuing / renewing certificate for $DOMAIN …"
-echo certbot --apache --non-interactive --agree-tos --email "$EMAIL" -d "$DOMAIN" && echo "issued"
-sudo certbot --apache --non-interactive --agree-tos --email "$EMAIL" -d "$DOMAIN" && echo "issued"
+# Run Certbot and capture *both* exit code & stdout
+OUT=$(sudo certbot --apache --non-interactive --agree-tos \
+                   --redirect \
+                   --email "$EMAIL" \
+                   -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
+CODE=$?
 
-echo "Done"
+echo "$OUT"
+echo ">>> exit-code: $CODE"
+[ $CODE -eq 0 ] && echo "CERTBOT_SUCCESS" || echo "CERTBOT_FAILED"
+
+exit 0
