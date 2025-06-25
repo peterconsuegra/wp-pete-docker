@@ -18,6 +18,29 @@ RUN a2dismod mpm_prefork && \
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
+COPY performance.tmpl /tmp/performance.tmpl
+
+# ── declare build-args; give safe fall-backs so docker build . works ─
+ARG APACHE_START_SERVERS=2
+ARG APACHE_SERVER_LIMIT=4
+ARG APACHE_THREADS=64
+ARG APACHE_MAX_WORKERS=512
+ARG APACHE_SPARE_MIN=64
+ARG APACHE_SPARE_MAX=192
+
+# ── render template → final conf; enable it ─────────────────────────
+RUN mkdir -p /etc/apache2/conf-enabled && \
+    sed -e "s/{{START_SERVERS}}/${APACHE_START_SERVERS}/" \
+        -e "s/{{SERVER_LIMIT}}/${APACHE_SERVER_LIMIT}/" \
+        -e "s/{{THREADS_PER_CHILD}}/${APACHE_THREADS}/" \
+        -e "s/{{MAX_REQUEST_WORKERS}}/${APACHE_MAX_WORKERS}/" \
+        -e "s/{{SPARE_MIN}}/${APACHE_SPARE_MIN}/" \
+        -e "s/{{SPARE_MAX}}/${APACHE_SPARE_MAX}/" \
+        /tmp/performance.tmpl \
+        > /etc/apache2/conf-enabled/performance.conf && \
+    rm /tmp/performance.tmpl && \
+    a2enconf performance          # so Apache actually loads it
+
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0
 RUN apt-get update && \

@@ -19,6 +19,7 @@ services:
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
     ports:
       - "80:80"
       - "443:443"
@@ -54,6 +55,7 @@ services:
       PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
   db:
     image: mariadb:10.6
@@ -162,6 +164,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apache2 apache2-utils \
         libapache2-mod-security2 \
+        certbot python3-certbot-apache \
         sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -227,6 +230,10 @@ COPY reload_apache.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
  && chmod 755 /usr/local/bin/reload_apache.cgi
 
+COPY issue_cert.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
+    && chmod 755 /usr/local/bin/issue_cert.cgi
+
 # 5) Pete & phpMyAdmin base vhosts
 COPY pete.conf /etc/apache2/sites-available/000-pete.conf
 COPY phpmyadmin.conf   /etc/apache2/sites-available/
@@ -241,9 +248,13 @@ RUN a2ensite 000-pete.conf && \
     a2enconf modsecurity && \
     a2dissite 000-default.conf
 
+COPY timeout.conf /etc/apache2/conf-available/
+RUN a2enconf timeout
+
 # 8) Allow www-data (CGI) to reload Apache
 RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
@@ -321,6 +332,7 @@ DB_PASSWORD=${PETE_DB_PASSWORD}
 PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
 APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
 APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
+APACHE_CERTBOT_URL=${APACHE_CERTBOT_URL}
 PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
 PETE_DEMO=inactive
 PETE_ENVIRONMENT=production
@@ -336,7 +348,7 @@ EOF
   # Add general options
   php artisan addoption --option_name=os --option_value=docker
   php artisan addoption --option_name=server_status --option_value=off
-  php artisan addoption --option_name=parent_version --option_value=6
+  php artisan addoption --option_name=parent_version --option_value=11
   php artisan addoption --option_name=version --option_value="$latestTag"
   php artisan addoption --option_name=app_root --option_value=/var/www/html
   php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
@@ -461,6 +473,7 @@ PETE_DB_PASS=pixma301
 PETE_ENVIRONMENT=development
 APACHE_RELOAD_SECRET=SuperReload123
 APACHE_RELOAD_URL=http://apache/internal-reload 
+APACHE_CERTBOT_URL=http://apache/internal-certbot
 PROMPT_GENERATOR_FILES=docker-compose.yml,php/Dockerfile,apache/Dockerfile,db-config/my.cnf,php/pete_install.sh,db-config/init.sh,.env,apache/pete.conf,apache/phpmyadmin.conf,apache/reload_apache.cgi
 PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
 ```
@@ -486,6 +499,13 @@ PROMPT_GENERATOR_CONTEXT=You are an experienced DevOps devolver with extensive k
 
     # graceful-reload hook (now inside the vhost)
     ScriptAlias /internal-reload /usr/local/bin/reload_apache.cgi
+    <Directory "/usr/local/bin">
+        Options +ExecCGI
+        Require local
+        Require ip 172.16.0.0/12
+    </Directory>
+
+    ScriptAlias /internal-certbot /usr/local/bin/issue_cert.cgi
     <Directory "/usr/local/bin">
         Options +ExecCGI
         Require local
