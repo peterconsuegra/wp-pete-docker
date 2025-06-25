@@ -96,9 +96,8 @@ DOWNLOAD WORDPRESS SAMPLE FOR TESTING
 docker compose exec apache \
   bash -c "cd /var/www/html && curl -LO https://wordpresspete.com/demov5.tar.gz && chown www-data:www-data demov5.tar.gz"
 
-docker compose exec php \
-  bash -c "cd /var/www/html && php artisan addoption --option_name=domain_template --option_value=wordpresspete.org"
-
+docker-compose exec apache \
+  bash -c "cd /var/www/html && curl -LO https://wordpresspete.com/demov5.tar.gz && chown www-data:www-data demov5.tar.gz
 
 HARDENING YOUR VM (RECOMMENDED)
 vim /etc/ssh/sshd_config
@@ -113,5 +112,11 @@ sudo ufw enable
 
 curl -s -H "X-Reload-Secret: Super3232" \
      "http://apache/internal-certbot?domain=demo7.wordpresspete.org&email=pedroconsuegrat@gmail.com"
+
+WIKI OLD
+https://github.com/peterconsuegra/wordpress-pete-docker/wiki
+
+
+
 
 
