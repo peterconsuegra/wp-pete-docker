@@ -4,15 +4,15 @@
 FROM debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1) Packages  – add brotli *and* http2 runtime parts
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        apache2 apache2-utils \
-        libapache2-mod-security2 \
-        libapache2-mod-brotli \          
-        libnghttp2-mod-http2 \           
-        certbot \ 
-        python3-certbot-apache \
-        sudo vim curl ca-certificates \
+# 1) Packages – Apache, ModSecurity, Brotli, HTTP/2, Certbot
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      apache2 apache2-utils \
+      libapache2-mod-security2 \
+      libapache2-mod-brotli \
+      libapache2-mod-http2 \
+      certbot python3-certbot-apache \
+      sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # 2) Enable modules  – add http2, brotli, cache, deflate …
