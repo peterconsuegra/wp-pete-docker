@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────
 # Apache (event) + ModSecurity 2 + OWASP CRS
 # ─────────────────────────────────────────────
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1) Packages – Apache, ModSecurity, Brotli, HTTP/2, Certbot
