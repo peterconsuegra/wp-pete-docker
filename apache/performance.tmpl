@@ -31,21 +31,13 @@ H2PushPriority  *                       after
 H2PushPriority  text/css                before
 H2PushPriority  image/vnd.microsoft.icon after
 
+# 4) Compression – gzip / deflate
 #######################################################################
-# 4) Compression – Brotli first, gzip fallback
-#######################################################################
-<IfModule mod_brotli.c>
-    BrotliCompressionQuality 5
-    AddOutputFilterByType BROTLI_COMPRESS \
-        text/html text/plain text/css text/xml text/javascript \
-        application/javascript application/json image/svg+xml
-</IfModule>
-
 <IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE \
-        text/html text/plain text/css text/xml text/javascript \
-        application/javascript application/json image/svg+xml
-</IfModule>
+     AddOutputFilterByType DEFLATE \
+         text/html text/plain text/css text/xml text/javascript \
+         application/javascript application/json image/svg+xml
+ </IfModule>
 
 #######################################################################
 # 5) Disk cache for repeat hits
