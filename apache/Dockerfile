@@ -4,17 +4,20 @@
 FROM debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1) Packages
+# 1) Packages  – add brotli *and* http2 runtime parts
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apache2 apache2-utils \
         libapache2-mod-security2 \
+        libapache2-mod-brotli \          # ← NEW (compression)
+        libnghttp2-mod-http2 \           # ← NEW (HTTP/2 on Debian/Ubuntu)
         certbot python3-certbot-apache \
         sudo vim curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 2) Enable modules
+# 2) Enable modules  – add http2, brotli, cache, deflate …
 RUN a2dismod mpm_prefork && \
-    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env cgi
+    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env cgi \
+             http2 brotli deflate cache cache_disk
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
