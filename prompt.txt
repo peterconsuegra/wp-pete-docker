@@ -171,13 +171,13 @@ RUN apt-get update && \
       apache2 apache2-utils \
       libapache2-mod-security2 \
       certbot python3-certbot-apache \
-      sudo curl ca-certificates && \
+      sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
 
-# Enable performance & security modules
 RUN a2dismod mpm_prefork && \
     a2enmod mpm_event proxy proxy_fcgi rewrite headers expires \
-            http2 deflate cache cache_disk
+            http2 deflate cache cache_disk \
+    && a2enmod cgid 
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
@@ -664,16 +664,6 @@ H2PushPriority  image/vnd.microsoft.icon after
   <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js)$">
       SecRuleEngine Off
   </LocationMatch>
-</IfModule>
-
-#######################################################################
-# 7) Extra security / perf headers
-#######################################################################
-<IfModule mod_headers.c>
-    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 ```
 

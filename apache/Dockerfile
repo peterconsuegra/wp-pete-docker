@@ -17,6 +17,7 @@ RUN a2dismod mpm_prefork && \
             http2 deflate cache cache_disk \
     && a2enmod cgid 
 
+RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
 COPY performance.tmpl /tmp/performance.tmpl
