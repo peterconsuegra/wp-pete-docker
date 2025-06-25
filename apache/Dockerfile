@@ -22,12 +22,12 @@ COPY status.conf /etc/apache2/mods-enabled/status.conf
 COPY performance.tmpl /tmp/performance.tmpl
 
 # ── declare build-args; give safe fall-backs so docker build . works ─
-ARG APACHE_START_SERVERS=2
-ARG APACHE_SERVER_LIMIT=4
-ARG APACHE_THREADS=64
-ARG APACHE_MAX_WORKERS=512
-ARG APACHE_SPARE_MIN=64
-ARG APACHE_SPARE_MAX=192
+ARG APACHE_START_SERVERS
+ARG APACHE_SERVER_LIMIT
+ARG APACHE_THREADS
+ARG APACHE_MAX_WORKERS
+ARG APACHE_SPARE_MIN
+ARG APACHE_SPARE_MAX
 
 # ── render template → final conf; enable it ─────────────────────────
 RUN mkdir -p /etc/apache2/conf-available && \

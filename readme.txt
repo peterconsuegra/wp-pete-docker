@@ -118,5 +118,14 @@ https://github.com/peterconsuegra/wordpress-pete-docker/wiki
 
 
 
+# 1. Recompute limits for THIS host or CI runner
+./bin/tune_apache_env.sh
+
+# 2. Rebuild image so numbers are baked in
+docker compose build apache
+
+# 3. Start / restart the stack
+docker compose up -d
+
 
 
