@@ -1,8 +1,7 @@
 # ─────────────────────────────────────────────
 # Apache (event) + ModSecurity 2 + OWASP CRS
 # ─────────────────────────────────────────────
-FROM debian:bookworm-slim
-ENV DEBIAN_FRONTEND=noninteractive
+FROM ubuntu:22.04
 
 # 1) Packages – Apache, ModSecurity, Brotli, HTTP/2, Certbot
 RUN apt-get update && \
@@ -10,15 +9,13 @@ RUN apt-get update && \
       apache2 apache2-utils \
       libapache2-mod-security2 \
       libapache2-mod-brotli \
-      libapache2-mod-http2 \
       certbot python3-certbot-apache \
-      sudo vim curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+      sudo vim curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# 2) Enable modules  – add http2, brotli, cache, deflate …
 RUN a2dismod mpm_prefork && \
-    a2enmod  mpm_event proxy proxy_fcgi rewrite headers expires status env cgi \
-             http2 brotli deflate cache cache_disk
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires status env cgi \
+            http2 brotli deflate cache cache_disk
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
