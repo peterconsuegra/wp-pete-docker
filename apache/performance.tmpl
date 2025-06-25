@@ -67,13 +67,3 @@ H2PushPriority  image/vnd.microsoft.icon after
       SecRuleEngine Off
   </LocationMatch>
 </IfModule>
-
-#######################################################################
-# 7) Extra security / perf headers
-#######################################################################
-<IfModule mod_headers.c>
-    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-    Header always set X-Content-Type-Options "nosniff"
-    Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
-</IfModule>

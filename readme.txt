@@ -97,7 +97,7 @@ docker compose exec apache \
   bash -c "cd /var/www/html && curl -LO https://wordpresspete.com/demov5.tar.gz && chown www-data:www-data demov5.tar.gz"
 
 docker-compose exec apache \
-  bash -c "cd /var/www/html && curl -LO https://wordpresspete.com/demov5.tar.gz && chown www-data:www-data demov5.tar.gz
+  bash -c "cd /var/www/html && curl -LO https://wordpresspete.com/demov5.tar.gz && chown www-data:www-data demov5.tar.gz"
 
 HARDENING YOUR VM (RECOMMENDED)
 vim /etc/ssh/sshd_config
