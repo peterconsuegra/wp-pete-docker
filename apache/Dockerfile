@@ -9,13 +9,13 @@ RUN apt-get update && \
       apache2 apache2-utils \
       libapache2-mod-security2 \
       certbot python3-certbot-apache \
-      sudo curl ca-certificates && \
+      sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
 
-# Enable performance & security modules
 RUN a2dismod mpm_prefork && \
     a2enmod mpm_event proxy proxy_fcgi rewrite headers expires \
-            http2 deflate cache cache_disk
+            http2 deflate cache cache_disk \
+    && a2enmod cgid 
 
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
