@@ -118,6 +118,8 @@ https://github.com/peterconsuegra/wordpress-pete-docker/wiki
 
 
 #REBULD APACHE
+performance file: /etc/apache2/conf-available/performance.conf
+
 docker compose build --no-cache apache
 docker compose up -d apache
 
