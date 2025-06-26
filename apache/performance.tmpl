@@ -59,3 +59,12 @@ H2PushPriority  image/vnd.microsoft.icon after
     CacheDisable /phpmyadmin
     CacheDisable /wp-json/pete/
 </IfModule>
+
+#######################################################################
+# 6) ModSecurity – skip rules on static files to save CPU
+#######################################################################
+<IfModule security2_module>
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js)$">
+      SecRuleEngine Off
+  </LocationMatch>
+</IfModule>
