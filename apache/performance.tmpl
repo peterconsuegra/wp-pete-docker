@@ -43,6 +43,11 @@ H2PushPriority  image/vnd.microsoft.icon after
 # 5) Disk cache for repeat hits
 #######################################################################
 <IfModule mod_cache.c>
+    CacheDisable /wp-json/pete/
+    CacheDisable /index.php
+</IfModule>
+
+<IfModule mod_cache.c>
     CacheQuickHandler On
     CacheEnable disk /
     CacheIgnoreNoLastMod On
@@ -58,6 +63,7 @@ H2PushPriority  image/vnd.microsoft.icon after
     CacheDisable /wp-login.php
     CacheDisable /phpmyadmin
     CacheDisable /wp-json/pete/
+    CacheDisable /wp-json/pete/*
 </IfModule>
 
 #######################################################################
