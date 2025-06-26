@@ -117,7 +117,11 @@ WIKI OLD
 https://github.com/peterconsuegra/wordpress-pete-docker/wiki
 
 
+#REBULD APACHE
+docker compose build --no-cache apache
+docker compose up -d apache
 
+#NEW INSTALL
 # 1. Recompute limits for THIS host or CI runner
 ./bin/tune_apache_env.sh
 

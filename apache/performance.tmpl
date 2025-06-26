@@ -11,3 +11,13 @@
     MaxSpareThreads       {{SPARE_MAX}}
     MaxConnectionsPerChild 10000
 </IfModule>
+
+#######################################################################
+# 2) Core server tweaks
+#######################################################################
+ServerTokens Prod
+ServerSignature Off
+
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 2
