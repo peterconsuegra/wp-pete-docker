@@ -21,3 +21,12 @@ ServerSignature Off
 KeepAlive On
 MaxKeepAliveRequests 100
 KeepAliveTimeout 2
+
+#######################################################################
+# 3) HTTP/2 (+ server push)
+#######################################################################
+Protocols h2 http/1.1
+H2Push          on
+H2PushPriority  *                       after
+H2PushPriority  text/css                before
+H2PushPriority  image/vnd.microsoft.icon after
