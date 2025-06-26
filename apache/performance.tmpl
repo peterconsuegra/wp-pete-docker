@@ -30,3 +30,11 @@ H2Push          on
 H2PushPriority  *                       after
 H2PushPriority  text/css                before
 H2PushPriority  image/vnd.microsoft.icon after
+
+# 4) Compression – gzip / deflate
+#######################################################################
+<IfModule mod_deflate.c>
+     AddOutputFilterByType DEFLATE \
+         text/html text/plain text/css text/xml text/javascript \
+         application/javascript application/json image/svg+xml
+ </IfModule>
