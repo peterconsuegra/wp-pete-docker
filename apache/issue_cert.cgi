@@ -30,7 +30,7 @@ OUT=$(sudo certbot --apache --non-interactive --agree-tos \
 CODE=$?
 
 NAME="${DOMAIN//./}"
-sudo ./var/www/html/Pete/script/refine_ssl.sh -n {$NAME} -d {$DOMAIN}
+cd /var/www/html/Pete/scripts && sudo ./refine_ssl.sh -n {$NAME} -d {$DOMAIN}
 sudo /usr/sbin/apachectl -k graceful    
 
 
