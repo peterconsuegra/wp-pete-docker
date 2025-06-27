@@ -121,6 +121,8 @@ RUN a2ensite 000-pete.conf && \
 RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
+  'www-data ALL=(root) NOPASSWD:/var/www/html/Pete/scripts/refine_ssl.sh' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf

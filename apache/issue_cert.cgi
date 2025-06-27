@@ -32,18 +32,7 @@ OUT=$(sudo certbot --apache --non-interactive --agree-tos \
                    -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
 CODE=$?
 
-# ── Replace any existing (legacy) configs that used the dot-stripped name
-sudo rm -f "/etc/apache2/sites-available/${NAME}.conf" \
-          "/etc/apache2/sites-enabled/${NAME}.conf"
-
-# ── Add an HTTP-to-HTTPS redirect vHost into the SSL file Certbot created
-cat <<EOF | sudo tee -a "/etc/apache2/sites-available/${NAME}-le-ssl.conf" >/dev/null
-<VirtualHost *:80>
-    ServerName  ${DOMAIN}
-    ServerAlias www.${DOMAIN}
-    Redirect permanent / https://${DOMAIN}/
-</VirtualHost>
-EOF
+sudo ./var/www/html/Pete/script/generate_ssl_from_docker.sh -n {$NAME} -d {$DOMAIN}
 
 sudo /usr/sbin/apachectl -k graceful    # zero-downtime reload
 
