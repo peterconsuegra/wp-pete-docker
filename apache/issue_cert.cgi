@@ -36,7 +36,7 @@ sudo rm -f "/etc/apache2/sites-available/${NAME}.conf" \
           "/etc/apache2/sites-enabled/${NAME}.conf"
 
 # ── Add an HTTP-to-HTTPS redirect vHost into the SSL file Certbot created
-cat <<EOF | sudo tee -a "/etc/apache2/sites-available/${DOMAIN}-le-ssl.conf" >/dev/null
+cat <<EOF | sudo tee -a "/etc/apache2/sites-available/${NAME}-le-ssl.conf" >/dev/null
 <VirtualHost *:80>
     ServerName  ${DOMAIN}
     ServerAlias www.${DOMAIN}
