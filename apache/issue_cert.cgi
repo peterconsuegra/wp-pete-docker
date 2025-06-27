@@ -26,6 +26,7 @@ NAME="${DOMAIN//./}"
 
 echo ">>> certbot --apache -d $DOMAIN -d www.$DOMAIN (this may take a minute) …"
 OUT=$(sudo certbot --apache --non-interactive --agree-tos \
+                   --reinstall \
                    --redirect \
                    --email "$EMAIL" \
                    -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
