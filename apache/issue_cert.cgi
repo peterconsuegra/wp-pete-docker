@@ -32,7 +32,7 @@ OUT=$(sudo certbot --apache --non-interactive --agree-tos \
                    -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
 CODE=$?
 
-sudo ./var/www/html/Pete/script/generate_ssl_from_docker.sh -n {$NAME} -d {$DOMAIN}
+sudo ./var/www/html/Pete/script/refine_ssl.sh -n {$NAME} -d {$DOMAIN}
 
 sudo /usr/sbin/apachectl -k graceful    # zero-downtime reload
 
