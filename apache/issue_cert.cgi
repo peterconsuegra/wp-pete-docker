@@ -29,11 +29,6 @@ OUT=$(sudo certbot --apache --non-interactive --agree-tos \
                    -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
 CODE=$?
 
-NAME="${DOMAIN//./}"
-cd /var/www/html/Pete/scripts && sudo ./refine_ssl.sh -n {$NAME} -d {$DOMAIN}
-sudo /usr/sbin/apachectl -k graceful    
-
-
 echo "$OUT"
 echo ">>> exit-code: $CODE"
 [ $CODE -eq 0 ] && echo "CERTBOT_SUCCESS" || echo "CERTBOT_FAILED"
