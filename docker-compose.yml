@@ -16,6 +16,7 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
       - apache_logs:/var/log/apache2 
       - modsecurity_conf:/etc/modsecurity
     environment:
@@ -45,6 +46,7 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
       - apache_logs:/var/log/apache2
       - modsecurity_conf:/etc/modsecurity            
     env_file: .env                       
@@ -81,5 +83,6 @@ volumes:
   apache_sites_available:
   apache_sites_enabled:
   pma_data:
+  ssl_data
   apache_logs:
   modsecurity_conf: 
