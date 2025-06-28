@@ -20,6 +20,7 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
       - apache_logs:/var/log/apache2 
       - modsecurity_conf:/etc/modsecurity
     environment:
@@ -49,6 +50,7 @@ services:
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
       - apache_logs:/var/log/apache2
       - modsecurity_conf:/etc/modsecurity            
     env_file: .env                       
@@ -85,6 +87,7 @@ volumes:
   apache_sites_available:
   apache_sites_enabled:
   pma_data:
+  ssl_data:
   apache_logs:
   modsecurity_conf: 
 ```
@@ -283,6 +286,8 @@ RUN a2ensite 000-pete.conf && \
 RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
+  'www-data ALL=(root) NOPASSWD: /var/www/html/Pete/scripts/refine_ssl.sh' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
@@ -642,6 +647,11 @@ H2PushPriority  image/vnd.microsoft.icon after
 # 5) Disk cache for repeat hits
 #######################################################################
 <IfModule mod_cache.c>
+    CacheDisable /wp-json/pete/
+    CacheDisable /index.php
+</IfModule>
+
+<IfModule mod_cache.c>
     CacheQuickHandler On
     CacheEnable disk /
     CacheIgnoreNoLastMod On
@@ -657,6 +667,7 @@ H2PushPriority  image/vnd.microsoft.icon after
     CacheDisable /wp-login.php
     CacheDisable /phpmyadmin
     CacheDisable /wp-json/pete/
+    CacheDisable /wp-json/pete/*
 </IfModule>
 
 #######################################################################
@@ -772,6 +783,11 @@ H2PushPriority  image/vnd.microsoft.icon after
 # 5) Disk cache for repeat hits
 #######################################################################
 <IfModule mod_cache.c>
+    CacheDisable /wp-json/pete/
+    CacheDisable /index.php
+</IfModule>
+
+<IfModule mod_cache.c>
     CacheQuickHandler On
     CacheEnable disk /
     CacheIgnoreNoLastMod On
@@ -787,6 +803,7 @@ H2PushPriority  image/vnd.microsoft.icon after
     CacheDisable /wp-login.php
     CacheDisable /phpmyadmin
     CacheDisable /wp-json/pete/
+    CacheDisable /wp-json/pete/*
 </IfModule>
 
 #######################################################################
