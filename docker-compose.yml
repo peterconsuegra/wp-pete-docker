@@ -83,6 +83,6 @@ volumes:
   apache_sites_available:
   apache_sites_enabled:
   pma_data:
-  ssl_data
+  ssl_data:
   apache_logs:
   modsecurity_conf: 
