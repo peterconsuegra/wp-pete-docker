@@ -91,10 +91,7 @@ RUN set -e \
  && mkdir -p /var/log/apache2 \
  && touch      /var/log/apache2/modsec_audit.log \
  && chown -R www-data:www-data /var/log/apache2 \
- && chmod 750 /var/log/apache2 \
- && mkdir -p /var/cache/apache2/mod_cache_disk/tmp \
- && chown -R www-data:www-data /var/cache/apache2/mod_cache_disk \
- && chmod -R 2770 /var/cache/apache2/mod_cache_disk
+ && chmod 750 /var/log/apache2
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
@@ -125,7 +122,7 @@ RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
-  'www-data ALL=(root) NOPASSWD: /var/www/html/Pete/scripts/refine_ssl.sh' \
+  'www-data ALL=(root) NOPASSWD:/var/www/html/Pete/scripts/refine_ssl.sh' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
@@ -138,5 +135,5 @@ RUN chmod +x /usr/local/bin/start.sh
 
 # --- new: ensure volume will be writable by Pete ---
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
-ENV TMPDIR=/var/cache/apache2/mod_cache_disk/tmp
+
 CMD ["start.sh"]
