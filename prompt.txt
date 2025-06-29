@@ -256,7 +256,10 @@ RUN set -e \
  && mkdir -p /var/log/apache2 \
  && touch      /var/log/apache2/modsec_audit.log \
  && chown -R www-data:www-data /var/log/apache2 \
- && chmod 750 /var/log/apache2
+ && chmod 750 /var/log/apache2 \
+ && mkdir -p /var/cache/apache2/mod_cache_disk \
+ && chown -R www-data:www-data /var/cache/apache2/mod_cache_disk \
+ && chmod 770 /var/cache/apache2/mod_cache_disk
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
@@ -644,33 +647,6 @@ H2PushPriority  image/vnd.microsoft.icon after
  </IfModule>
 
 #######################################################################
-# 5) Disk cache for repeat hits
-#######################################################################
-<IfModule mod_cache.c>
-    CacheDisable /wp-json/pete/
-    CacheDisable /index.php
-</IfModule>
-
-<IfModule mod_cache.c>
-    CacheQuickHandler On
-    CacheEnable disk /
-    CacheIgnoreNoLastMod On
-    CacheRoot /var/cache/apache2/mod_cache_disk
-    CacheDirLevels 2
-    CacheDirLength 1
-    CacheDefaultExpire 86400          
-    CacheMinFileSize   500            
-    CacheMaxFileSize   10485760      
-
-    # Don’t cache admin or login screens
-    CacheDisable /wp-admin
-    CacheDisable /wp-login.php
-    CacheDisable /phpmyadmin
-    CacheDisable /wp-json/pete/
-    CacheDisable /wp-json/pete/*
-</IfModule>
-
-#######################################################################
 # 6) ModSecurity – skip rules on static files to save CPU
 #######################################################################
 <IfModule security2_module>
@@ -778,33 +754,6 @@ H2PushPriority  image/vnd.microsoft.icon after
          text/html text/plain text/css text/xml text/javascript \
          application/javascript application/json image/svg+xml
  </IfModule>
-
-#######################################################################
-# 5) Disk cache for repeat hits
-#######################################################################
-<IfModule mod_cache.c>
-    CacheDisable /wp-json/pete/
-    CacheDisable /index.php
-</IfModule>
-
-<IfModule mod_cache.c>
-    CacheQuickHandler On
-    CacheEnable disk /
-    CacheIgnoreNoLastMod On
-    CacheRoot /var/cache/apache2/mod_cache_disk
-    CacheDirLevels 2
-    CacheDirLength 1
-    CacheDefaultExpire 86400          
-    CacheMinFileSize   500            
-    CacheMaxFileSize   10485760      
-
-    # Don’t cache admin or login screens
-    CacheDisable /wp-admin
-    CacheDisable /wp-login.php
-    CacheDisable /phpmyadmin
-    CacheDisable /wp-json/pete/
-    CacheDisable /wp-json/pete/*
-</IfModule>
 
 #######################################################################
 # 6) ModSecurity – skip rules on static files to save CPU

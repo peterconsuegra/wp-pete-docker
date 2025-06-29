@@ -91,10 +91,11 @@ RUN set -e \
  && mkdir -p /var/log/apache2 \
  && touch      /var/log/apache2/modsec_audit.log \
  && chown -R www-data:www-data /var/log/apache2 \
- && chmod 750 /var/log/apache2 \
- && mkdir -p /var/cache/apache2/mod_cache_disk \
- && chown -R www-data:www-data /var/cache/apache2/mod_cache_disk \
- && chmod 770 /var/cache/apache2/mod_cache_disk
+ && chmod 750 /var/log/apache2
+
+RUN mkdir -p /var/cache/apache2/mod_cache_disk/tmp \
+    && chown www-data:www-data /var/cache/apache2/mod_cache_disk/tmp \
+    && chmod 2770 /var/cache/apache2/mod_cache_disk/tmp
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
