@@ -39,6 +39,12 @@ H2PushPriority  image/vnd.microsoft.icon after
          application/javascript application/json image/svg+xml
  </IfModule>
 
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
+
 #######################################################################
 # 6) ModSecurity – skip rules on static files to save CPU
 #######################################################################
