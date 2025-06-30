@@ -644,6 +644,12 @@ H2PushPriority  image/vnd.microsoft.icon after
          application/javascript application/json image/svg+xml
  </IfModule>
 
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
+
 #######################################################################
 # 6) ModSecurity – skip rules on static files to save CPU
 #######################################################################
@@ -675,7 +681,14 @@ chmod 750 /var/log/apache2
 # Ensure log directory exists
 mkdir -p /var/www/html/wwwlog/Pete
 
+mkdir -p /var/cache/apache2/mod_cache_disk/tmp
+chown -R www-data:www-data /var/cache/apache2
+chmod -R 750 /var/cache/apache2  
+chmod 750 /var/cache/apache2/mod_cache_disk/tmp
+
 exec apachectl -D FOREGROUND
+
+
 ```
 
 ========================================
@@ -752,6 +765,12 @@ H2PushPriority  image/vnd.microsoft.icon after
          text/html text/plain text/css text/xml text/javascript \
          application/javascript application/json image/svg+xml
  </IfModule>
+
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
 
 #######################################################################
 # 6) ModSecurity – skip rules on static files to save CPU
