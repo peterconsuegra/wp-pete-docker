@@ -25,6 +25,11 @@ RUN apt-get update && \
     \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js and npm ------------------------------------------------------
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
 # 3) Composer & WP-CLI ---------------------------------------------------------
 RUN curl -sS https://getcomposer.org/installer | php && \
     mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
