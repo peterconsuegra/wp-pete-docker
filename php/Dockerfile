@@ -17,6 +17,8 @@ RUN apt-get update && \
         certbot python3-certbot-apache \
         curl ca-certificates && \
     \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+        pip3 install --no-cache-dir gdown && \
     docker-php-ext-configure gd --with-freetype --with-jpeg && \
     docker-php-ext-install -j"$(nproc)" \
         mysqli pdo pdo_mysql gd zip opcache && \
