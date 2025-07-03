@@ -13,8 +13,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN a2dismod mpm_prefork && \
-    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires \
-            http2 deflate cache cache_disk \
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires ssl \
+            http2 deflate \
     && a2enmod cgid 
 
 RUN ln -s /usr/bin/vim.tiny /usr/bin/vim

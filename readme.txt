@@ -136,5 +136,7 @@ docker compose build apache
 # 3. Start / restart the stack
 docker compose up -d
 
+php artisan optimize:clear
 
+sudo service apache2 restart
 

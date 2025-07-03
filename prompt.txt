@@ -116,6 +116,8 @@ RUN apt-get update && \
         certbot python3-certbot-apache \
         curl ca-certificates && \
     \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+        pip3 install --no-cache-dir gdown && \
     docker-php-ext-configure gd --with-freetype --with-jpeg && \
     docker-php-ext-install -j"$(nproc)" \
         mysqli pdo pdo_mysql gd zip opcache && \
@@ -185,7 +187,7 @@ RUN apt-get update && \
 
 RUN a2dismod mpm_prefork && \
     a2enmod mpm_event proxy proxy_fcgi rewrite headers expires \
-            http2 deflate cache cache_disk \
+            http2 deflate \
     && a2enmod cgid 
 
 RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
