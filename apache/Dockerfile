@@ -103,9 +103,14 @@ COPY issue_cert.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
     && chmod 755 /usr/local/bin/issue_cert.cgi
 
+COPY toggle_modsec.sh /usr/local/bin/
+RUN chmod 755  /usr/local/bin/toggle_modsec.sh \
+    && chown root:root /usr/local/bin/toggle_modsec.sh
+
 COPY modsecurity_status.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/modsecurity_status.cgi \
     && chmod 755 /usr/local/bin/modsecurity_status.cgi
+
 
 # 5) Pete & phpMyAdmin base vhosts
 COPY pete.conf /etc/apache2/sites-available/000-pete.conf
@@ -126,7 +131,8 @@ RUN printf '%s\n' \
   'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
   'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
-  'www-data ALL=(root) NOPASSWD:/var/www/html/Pete/scripts/refine_ssl.sh' \
+  'www-data ALL=(root) NOPASSWD: /usr/local/bin/toggle_modsec.sh' \
+  'Defaults:www-data !requiretty' \
   > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
 
 RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf

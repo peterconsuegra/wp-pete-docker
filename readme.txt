@@ -116,6 +116,9 @@ sudo ufw enable
 curl -s -H "X-Reload-Secret: Super3232" \
      "http://apache/internal-certbot?domain=demo7.wordpresspete.org&email=pedroconsuegrat@gmail.com"
 
+curl -s -H "X-Reload-Secret: Super3232" \
+     "http://apache/internal-certbot?domain=demo7.wordpresspete.org&email=pedroconsuegrat@gmail.com"
+
 WIKI OLD
 https://github.com/peterconsuegra/wordpress-pete-docker/wiki
 
