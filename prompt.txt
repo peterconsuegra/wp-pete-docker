@@ -1,0 +1,834 @@
+**Context:** You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP app
+
+**docker-compose.yml**
+```
+services:
+  apache:
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
+        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
+        APACHE_THREADS:       ${APACHE_THREADS}
+        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
+        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
+        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+    restart: always
+    volumes:
+      - wp_data:/var/www/html            # shared codebase
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2 
+      - modsecurity_conf:/etc/modsecurity
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      default:
+        aliases:
+          - demo3.petelocal.net
+          - demo3.wordpresspete.org
+  php:
+    build: ./php
+    restart: always
+    depends_on:                # ← php waits for apache, db, redis
+      - apache
+      - db
+      - redis
+    expose:
+      - "9000"                           
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2
+      - modsecurity_conf:/etc/modsecurity            
+    env_file: .env                       
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      REDIS_HOST: redis
+  db:
+    image: mariadb:10.6
+    restart: always
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./db-config/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  wp_data:
+  db_data:
+  ssh_data:
+  apache_sites_available:
+  apache_sites_enabled:
+  pma_data:
+  ssl_data:
+  apache_logs:
+  modsecurity_conf: 
+```
+
+========================================
+
+**php/Dockerfile**
+```
+FROM php:8.1-fpm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_DISABLE_XDEBUG_WARN=1
+
+# 1) System & PHP extensions ---------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        default-mysql-client vim sudo git unzip zip \
+        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libzip-dev \
+        libonig-dev libxml2-dev \
+        python3 python3-pip python3-jinja2 \
+        python3-pandas python3-requests \
+        openssh-client \
+        docker.io \
+        certbot python3-certbot-apache \
+        curl ca-certificates && \
+    \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+        pip3 install --no-cache-dir gdown && \
+    docker-php-ext-configure gd --with-freetype --with-jpeg && \
+    docker-php-ext-install -j"$(nproc)" \
+        mysqli pdo pdo_mysql gd zip opcache && \
+    pecl install redis && \
+    docker-php-ext-enable redis && \
+    \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js and npm ------------------------------------------------------
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
+# 3) Composer & WP-CLI ---------------------------------------------------------
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
+    curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x /usr/local/bin/wp
+
+# 4) Copy configs & Pete installer --------------------------------------------
+COPY php.ini                 /usr/local/etc/php/
+COPY .gitconfig              /root/.gitconfig
+COPY pete_install.sh         /usr/local/bin/pete_install.sh
+RUN chmod +x /usr/local/bin/pete_install.sh && \
+    chown www-data:www-data  /usr/local/bin/pete_install.sh
+
+# 5) Create dirs & sudo rules Pete expects ------------------------------------
+RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
+    printf '%s\n' \
+     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*, /usr/bin/docker exec wp-pete-docker-apache-1 apachectl -k graceful' > /etc/sudoers.d/www-data && \
+    chmod 440 /etc/sudoers.d/www-data && \
+    chown -R www-data:www-data /var/www
+
+COPY config.inc.php.custom /opt/pma-config/
+# Replace whatever is currently set for $cfg['blowfish_secret']
+# with the literal placeholder '__BLOWFISH__'
+RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
+        /opt/pma-config/config.inc.php.custom
+
+# 7) Working dir, ownership, expose FPM ---------------------------------------
+WORKDIR /var/www/html
+
+EXPOSE 9000
+# default user is root now; no USER line
+ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
+# pete_install.sh will exec php-fpm as www-data
+
+```
+
+========================================
+
+**apache/Dockerfile**
+```
+# ─────────────────────────────────────────────
+# Apache (event) + ModSecurity 2 + OWASP CRS
+# ─────────────────────────────────────────────
+FROM debian:bookworm-slim
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      apache2 apache2-utils \
+      libapache2-mod-security2 \
+      certbot python3-certbot-apache \
+      sudo curl ca-certificates vim-tiny && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN a2dismod mpm_prefork && \
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires ssl \
+            http2 deflate \
+    && a2enmod cgid 
+
+RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
+COPY status.conf /etc/apache2/mods-enabled/status.conf
+
+COPY performance.tmpl /tmp/performance.tmpl
+
+# ── declare build-args; give safe fall-backs so docker build . works ─
+ARG APACHE_START_SERVERS=2
+ARG APACHE_SERVER_LIMIT=4
+ARG APACHE_THREADS=64
+ARG APACHE_MAX_WORKERS=512
+ARG APACHE_SPARE_MIN=64
+ARG APACHE_SPARE_MAX=192
+
+# ── render template → final conf; enable it ─────────────────────────
+RUN mkdir -p /etc/apache2/conf-available && \
+    sed  -e "s/{{START_SERVERS}}/${APACHE_START_SERVERS}/" \
+         -e "s/{{SERVER_LIMIT}}/${APACHE_SERVER_LIMIT}/" \
+         -e "s/{{THREADS_PER_CHILD}}/${APACHE_THREADS}/" \
+         -e "s/{{MAX_REQUEST_WORKERS}}/${APACHE_MAX_WORKERS}/" \
+         -e "s/{{SPARE_MIN}}/${APACHE_SPARE_MIN}/" \
+         -e "s/{{SPARE_MAX}}/${APACHE_SPARE_MAX}/" \
+         /tmp/performance.tmpl \
+         > /etc/apache2/conf-available/performance.conf && \
+    rm /tmp/performance.tmpl && \
+    a2enconf performance  
+
+# ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ARG CRS_VERSION=4.15.0
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libapache2-mod-security2 \
+      curl \
+      ca-certificates && \
+    \
+    # Prepare ModSecurity dirs
+    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
+    # Copy base config
+    cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
+    \
+    # Download and extract OWASP CRS v${CRS_VERSION}
+    curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+      -o /tmp/crs.tar.gz && \
+    tar zxvf /tmp/crs.tar.gz -C /usr/share && \
+    mv /usr/share/coreruleset-${CRS_VERSION} /usr/share/modsecurity-crs && \
+    rm /tmp/crs.tar.gz && \
+    \
+    # Copy CRS example setup into place
+    cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf && \
+    \
+    # Symlink all rule and data files
+    ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
+
+# ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY whitelist.conf /etc/modsecurity/whitelist.conf
+
+# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
+RUN a2enmod security2 \
+ && rm -f /etc/apache2/mods-enabled/security2.conf \
+ && a2enconf modsecurity \
+ && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ \
+ # enable JSON output for the audit log
+ && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+ \
+ && apache2ctl configtest
+
+# ── make sure Apache can write its own logs ──────────────────────────────
+RUN set -e \
+ && mkdir -p /var/log/apache2 \
+ && touch      /var/log/apache2/modsec_audit.log \
+ && chown -R www-data:www-data /var/log/apache2 \
+ && chmod 750 /var/log/apache2
+
+# 4) Reload-hook CGI
+ARG APACHE_RELOAD_SECRET
+COPY reload_apache.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
+ && chmod 755 /usr/local/bin/reload_apache.cgi
+
+COPY issue_cert.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
+    && chmod 755 /usr/local/bin/issue_cert.cgi
+
+# 5) Pete & phpMyAdmin base vhosts
+COPY pete.conf /etc/apache2/sites-available/000-pete.conf
+COPY phpmyadmin.conf   /etc/apache2/sites-available/
+COPY whitelist.conf    /etc/modsecurity/whitelist.conf
+COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+
+# 6) Make vhost dirs shared & writable *before* volume is created
+RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
+
+# 7) Enable baseline sites & configs (done once at build-time)
+RUN a2ensite 000-pete.conf && \
+    a2enconf modsecurity && \
+    a2dissite 000-default.conf
+
+# 8) Allow www-data (CGI) to reload Apache
+RUN printf '%s\n' \
+  'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
+  'www-data ALL=(root) NOPASSWD:/var/www/html/Pete/scripts/refine_ssl.sh' \
+  > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
+
+RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
+WORKDIR /var/www/html
+EXPOSE 80
+
+# wait-helper script
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+# --- new: ensure volume will be writable by Pete ---
+RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
+
+CMD ["start.sh"]
+
+```
+
+========================================
+
+**db-config/my.cnf**
+```
+[mysqld]
+innodb_buffer_pool_size = 1G
+innodb_log_file_size    = 256M
+innodb_flush_log_at_trx_commit = 2
+query_cache_type = 0
+skip-name-resolve
+```
+
+========================================
+
+**php/pete_install.sh**
+```bash
+#!/bin/bash
+set -e
+
+# 1) Wait for MySQL to be ready
+echo "Waiting for MySQL..."
+until mysqladmin ping -h db --silent; do
+  sleep 3
+done
+chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
+
+
+# 3) Full Pete install (only once)
+if [ ! -f /var/www/html/.installed ]; then
+  echo "#######################################"
+  echo "Starting WordPress Pete installation..."
+  echo "#######################################"
+
+  mkdir -p /var/www/html/wwwlog/Pete
+  chown -R www-data:www-data /var/www/html/wwwlog
+  rm -rf /var/www/html/Pete
+  cd /var/www/html
+
+  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  cd Pete
+
+  git fetch --tags
+  latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  git checkout $latestTag
+
+  # Reset composer & env
+  rm -f auth.json composer.json
+  cp composer_original.json composer.json
+  cp .env.example .env
+
+  cat <<EOF >> .env
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=${PETE_DB_NAME}
+DB_USERNAME=${PETE_DB_USER}
+DB_PASSWORD=${PETE_DB_PASSWORD}
+PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
+APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
+APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
+APACHE_CERTBOT_URL=${APACHE_CERTBOT_URL}
+PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
+PETE_DEMO=inactive
+PETE_ENVIRONMENT=production
+PETE_DEBUG=inactive
+EOF
+
+  # Install PHP deps & migrate
+  rm -rf vendor
+  COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev
+  php artisan key:generate
+  php artisan migrate
+
+  # Add general options
+  php artisan addoption --option_name=os --option_value=docker
+  php artisan addoption --option_name=server_status --option_value=off
+  php artisan addoption --option_name=parent_version --option_value=11
+  php artisan addoption --option_name=version --option_value="$latestTag"
+  php artisan addoption --option_name=app_root --option_value=/var/www/html
+  php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
+  php artisan addoption --option_name=server --option_value=apache
+  php artisan addoption --option_name=server_version --option_value=24
+  php artisan addoption --option_name=os_version --option_value=bionic
+  php artisan addoption --option_name=os_distribution --option_value=ubuntu
+  php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
+  php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
+  php artisan addoption --option_name=phpmyadmin_status --option_value=off
+  php artisan addoption --option_name=security_status --option_value=on
+
+  # Create needed dirs & perms
+  mkdir -p public/uploads public/export trash storage storage/logs
+  touch storage/logs/laravel.log
+  mkdir -p /var/www/html/wwwlog/Pete /var/www/html/wwwlog/example1
+  composer dump-autoload --ignore-platform-reqs
+
+  # Mark as installed
+  chown -R www-data:www-data /var/www/html/Pete 
+  echo "done" > /var/www/html/.installed
+  echo "#######################################"
+  echo "WordPress Pete installation completed"
+  echo "#######################################"
+
+fi
+
+# 4) Post-install setup
+echo "#######################################"
+echo "Launching WordPress Pete..."
+echo "#######################################"
+
+# SSH key (for private repos, if needed)
+SSH_DIR="${HOME}/.ssh"
+if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
+  mkdir -p "${SSH_DIR}"
+  ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
+  chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
+  chown -R www-data:www-data "${SSH_DIR}"
+fi
+
+#domain_template for development
+pete_environment=${PETE_ENVIRONMENT}
+if [ "$pete_environment" = "development" ]; then
+  cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+else
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
+fi
+
+###############################################################################
+# phpMyAdmin bootstrap (runs only once per empty pma_data volume)
+###############################################################################
+PMA_DIR="/usr/src/phpmyadmin"                      # shared volume mount-point
+PMA_CFG_TMPL="/opt/pma-config/config.inc.php.custom"
+PMA_CFG_DEST="${PMA_DIR}/config.inc.php"
+PMA_VERSION="5.2.2"
+
+if [ ! -f "${PMA_DIR}/index.php" ]; then
+    echo "→ Installing phpMyAdmin ${PMA_VERSION} into ${PMA_DIR} …"
+    curl -fsSL \
+      "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz
+    mkdir -p "${PMA_DIR}"
+    tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+    rm /tmp/pma.tar.gz
+fi
+
+# ---------------------------------------------------------------------------
+# Copy / template the main config only if it does not exist yet
+# ---------------------------------------------------------------------------
+if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
+    echo "→ Creating phpMyAdmin config …"
+
+    # Use the secret from .env, or generate one on the fly
+    BF_SECRET=${BLOWFISH_SECRET:-$(head -c32 /dev/urandom | base64)}
+
+    # Copy template → destination, substituting the placeholder
+    sed "s#__BLOWFISH__#${BF_SECRET}#" "${PMA_CFG_TMPL}" > "${PMA_CFG_DEST}"
+    chown www-data:www-data "${PMA_CFG_DEST}"
+fi
+###############################################################################
+
+
+# 5) Finally delegate to the official Apache entrypoint
+exec php-fpm 
+
+```
+
+========================================
+
+**db-config/init.sh**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo ">>> Initializing WordPress & Pete databases…"
+
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
+
+  CREATE DATABASE IF NOT EXISTS \`${PETE_DB_NAME}\`
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  CREATE USER IF NOT EXISTS '${PETE_DB_USER}'@'%'
+    IDENTIFIED BY '${PETE_DB_PASS}';
+  GRANT ALL PRIVILEGES ON \`${PETE_DB_NAME}\`.* TO '${PETE_DB_USER}'@'%';
+
+  GRANT CREATE, DROP, ALTER, INDEX ON *.* TO '${PETE_DB_USER}'@'%';
+
+  FLUSH PRIVILEGES;
+EOSQL
+
+```
+
+========================================
+
+**.env**
+```
+MYSQL_ROOT_PASSWORD=EvenMoreSecret
+PETE_DB_USER=pete
+PETE_DB_NAME=pete_db
+PETE_DB_PASS=pixma301
+PETE_ENVIRONMENT=development
+APACHE_RELOAD_SECRET=SuperReload123
+APACHE_RELOAD_URL=http://apache/internal-reload 
+APACHE_CERTBOT_URL=http://apache/internal-certbot
+APACHE_START_SERVERS=4
+APACHE_SERVER_LIMIT=16
+APACHE_THREADS=64
+APACHE_MAX_WORKERS=1024
+APACHE_SPARE_MIN=64
+APACHE_SPARE_MAX=192
+```
+
+========================================
+
+**apache/pete.conf**
+```
+<VirtualHost _default_:80>
+    ServerName localhost
+    DocumentRoot /var/www/html/Pete/public
+
+    <Directory /var/www/html/Pete/public>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # send PHP to FPM
+    <FilesMatch "\.php$">
+        SetHandler "proxy:fcgi://php:9000"
+    </FilesMatch>
+
+    # graceful-reload hook (now inside the vhost)
+    ScriptAlias /internal-reload /usr/local/bin/reload_apache.cgi
+    <Directory "/usr/local/bin">
+        Options +ExecCGI
+        Require local
+        Require ip 172.16.0.0/12
+    </Directory>
+
+    ScriptAlias /internal-certbot /usr/local/bin/issue_cert.cgi
+    <Directory "/usr/local/bin">
+        Options +ExecCGI
+        Require local
+        Require ip 172.16.0.0/12
+    </Directory>
+
+    LogLevel debug
+    ErrorLog  /var/www/html/wwwlog/Pete/error.log
+    CustomLog /var/www/html/wwwlog/Pete/access.log combined
+</VirtualHost>
+```
+
+========================================
+
+**apache/phpmyadmin.conf**
+```
+Alias /phpmyadmin /usr/src/phpmyadmin
+
+<Directory /usr/src/phpmyadmin>
+    Options Indexes FollowSymLinks
+    DirectoryIndex index.php
+    AllowOverride None
+    Require all granted
+</Directory>
+
+<IfModule mod_env.c>
+  PassEnv BLOWFISH_SECRET
+</IfModule>
+```
+
+========================================
+
+**apache/reload_apache.cgi**
+```
+#!/bin/bash
+# simple CGI that reloads Apache only if the shared secret matches
+
+SECRET="__RELOAD_SECRET__"    # will be substituted in the Dockerfile
+
+echo "Content-Type: text/plain"
+echo
+
+if [ "$HTTP_X_RELOAD_SECRET" != "$SECRET" ]; then
+  echo "Forbidden"
+  exit 0
+fi
+
+# graceful reload (keeps current connections)
+sudo /usr/sbin/apachectl -k graceful
+echo "Reloaded"
+
+```
+
+========================================
+
+**apache/performance.tmpl**
+```
+#######################################################################
+# 1) MPM-event – concurrency limits (placeholders filled at boot)
+#######################################################################
+
+<IfModule mpm_event_module>
+    StartServers          {{START_SERVERS}}
+    ServerLimit           {{SERVER_LIMIT}}
+    ThreadsPerChild       {{THREADS_PER_CHILD}}
+    MaxRequestWorkers     {{MAX_REQUEST_WORKERS}}
+    MinSpareThreads       {{SPARE_MIN}}
+    MaxSpareThreads       {{SPARE_MAX}}
+    MaxConnectionsPerChild 10000
+</IfModule>
+
+#######################################################################
+# 2) Core server tweaks
+#######################################################################
+ServerTokens Prod
+ServerSignature Off
+
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 2
+
+#######################################################################
+# 3) HTTP/2 (+ server push)
+#######################################################################
+Protocols h2 http/1.1
+H2Push          on
+H2PushPriority  *                       after
+H2PushPriority  text/css                before
+H2PushPriority  image/vnd.microsoft.icon after
+
+# 4) Compression – gzip / deflate
+#######################################################################
+<IfModule mod_deflate.c>
+     AddOutputFilterByType DEFLATE \
+         text/html text/plain text/css text/xml text/javascript \
+         application/javascript application/json image/svg+xml
+ </IfModule>
+
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
+
+#######################################################################
+# 6) ModSecurity – skip rules on static files to save CPU
+#######################################################################
+<IfModule security2_module>
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js)$">
+      SecRuleEngine Off
+  </LocationMatch>
+</IfModule>
+```
+
+========================================
+
+**apache/start.sh**
+```bash
+#!/bin/bash
+set -e
+
+# Wait until PHP (Pete installer) has populated the volume
+echo "Waiting for Pete document root…"
+while [ ! -d "/var/www/html/Pete/public" ]; do
+  sleep 2
+done
+
+mkdir -p /var/log/apache2
+touch    /var/log/apache2/modsec_audit.log
+chown -R www-data:www-data /var/log/apache2
+chmod 750 /var/log/apache2
+
+# Ensure log directory exists
+mkdir -p /var/www/html/wwwlog/Pete
+
+mkdir -p /var/cache/apache2/mod_cache_disk/tmp
+chown -R www-data:www-data /var/cache/apache2
+chmod -R 750 /var/cache/apache2  
+chmod 750 /var/cache/apache2/mod_cache_disk/tmp
+
+exec apachectl -D FOREGROUND
+
+
+```
+
+========================================
+
+**apache/timeout.conf**
+```
+Timeout              600
+CGIDScriptTimeout    600
+```
+
+========================================
+
+**apache/modsecurity-apache.conf**
+```
+LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
+
+ <IfModule security2_module>
+     SecRuleEngine On
+     SecRequestBodyAccess On
+     SecResponseBodyAccess Off
+
+     Include /etc/modsecurity/modsecurity.conf
+
+     Include /etc/modsecurity/crs-setup.conf
+
+     Include /etc/modsecurity/whitelist.conf
+
+     IncludeOptional /etc/modsecurity/rules/*.conf
+
+    SecRequestBodyLimit        1073741824
+    SecRequestBodyNoFilesLimit 1073741824
+
+ </IfModule>
+```
+
+========================================
+
+**apache/performance.tmpl**
+```
+#######################################################################
+# 1) MPM-event – concurrency limits (placeholders filled at boot)
+#######################################################################
+
+<IfModule mpm_event_module>
+    StartServers          {{START_SERVERS}}
+    ServerLimit           {{SERVER_LIMIT}}
+    ThreadsPerChild       {{THREADS_PER_CHILD}}
+    MaxRequestWorkers     {{MAX_REQUEST_WORKERS}}
+    MinSpareThreads       {{SPARE_MIN}}
+    MaxSpareThreads       {{SPARE_MAX}}
+    MaxConnectionsPerChild 10000
+</IfModule>
+
+#######################################################################
+# 2) Core server tweaks
+#######################################################################
+ServerTokens Prod
+ServerSignature Off
+
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 2
+
+#######################################################################
+# 3) HTTP/2 (+ server push)
+#######################################################################
+Protocols h2 http/1.1
+H2Push          on
+H2PushPriority  *                       after
+H2PushPriority  text/css                before
+H2PushPriority  image/vnd.microsoft.icon after
+
+# 4) Compression – gzip / deflate
+#######################################################################
+<IfModule mod_deflate.c>
+     AddOutputFilterByType DEFLATE \
+         text/html text/plain text/css text/xml text/javascript \
+         application/javascript application/json image/svg+xml
+ </IfModule>
+
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
+
+#######################################################################
+# 6) ModSecurity – skip rules on static files to save CPU
+#######################################################################
+<IfModule security2_module>
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js)$">
+      SecRuleEngine Off
+  </LocationMatch>
+</IfModule>
+```
+
+========================================
+
+**apache/whitelist.conf**
+```
+# remove false-positives first
+SecAction \
+  "id:10000,\
+   phase:1,\
+   pass,\
+   nolog,\
+   ctl:ruleRemoveById=953100,\
+   ctl:ruleRemoveById=959100,\
+   ctl:ruleRemoveById=980170"
+
+# now per-path disables, each with a different ID
+SecRule REQUEST_URI "@beginsWith /wp-admin" \
+    "id:1000001,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpinfo_panel" \
+    "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpinfo_view" \
+    "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /validate_pete" \
+    "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_plugins_install" \
+    "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_update" \
+    "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /update_post" \
+    "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpmyadmin" \
+    "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpmyinfo" \
+    "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
+    "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /internal-certbot" "id:1000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /internal-reload"  "id:1000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /import_wordpress/store" \
+    "id:910004,phase:1,pass,nolog,ctl:ruleRemoveById=200004"
+```
+

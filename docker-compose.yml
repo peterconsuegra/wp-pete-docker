@@ -12,13 +12,12 @@ services:
         APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
     restart: always
     volumes:
-      - wp_data:/var/www/html            # shared codebase
+      - wp_data:/var/www/html           
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin:ro
       - ssl_data:/etc/letsencrypt
       - apache_logs:/var/log/apache2 
-      - modsecurity_conf:/etc/modsecurity
     environment:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
@@ -48,8 +47,7 @@ services:
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin
       - ssl_data:/etc/letsencrypt
-      - apache_logs:/var/log/apache2
-      - modsecurity_conf:/etc/modsecurity            
+      - apache_logs:/var/log/apache2      
     env_file: .env                       
     environment:
       WORDPRESS_DB_HOST: db:3306
@@ -86,4 +84,3 @@ volumes:
   pma_data:
   ssl_data:
   apache_logs:
-  modsecurity_conf: 

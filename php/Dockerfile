@@ -18,7 +18,7 @@ RUN apt-get update && \
         curl ca-certificates && \
     \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
-        pip3 install --no-cache-dir gdown && \
+        pip3 install --no-cache-dir gdown python-dotenv && \
     docker-php-ext-configure gd --with-freetype --with-jpeg && \
     docker-php-ext-install -j"$(nproc)" \
         mysqli pdo pdo_mysql gd zip opcache && \

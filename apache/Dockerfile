@@ -103,6 +103,10 @@ COPY issue_cert.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
     && chmod 755 /usr/local/bin/issue_cert.cgi
 
+COPY modsecurity_status.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/modsecurity_status.cgi \
+    && chmod 755 /usr/local/bin/modsecurity_status.cgi
+
 # 5) Pete & phpMyAdmin base vhosts
 COPY pete.conf /etc/apache2/sites-available/000-pete.conf
 COPY phpmyadmin.conf   /etc/apache2/sites-available/
