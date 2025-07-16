@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/tune_apache_env.sh
 # ---------------------------------------------------------
-# Auto-tune Apache 2.4 *event* MPM for the host it runs on:
+# Auto-tune Apache 2.4 *event* MPM for the host it runs on exmaple:
 #   • Detect CPU-cores & RAM
 #   • Derive sensible MPM numbers
 #   • Upsert them into the chosen .env file
