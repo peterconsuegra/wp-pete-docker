@@ -143,3 +143,6 @@ php artisan optimize:clear
 
 sudo service apache2 restart
 
+#APACHE TUNING IN production
+./bin/tune_apache_env.sh 4c 8G
+
