@@ -152,13 +152,20 @@ exit 0
 
 **php/Dockerfile**
 ```
-FROM php:8.1-fpm
+# ──────────────────────────────────────────────────────────────────────
+# WordPress Pete – parameterised PHP-FPM image
+#   • Build with any officially-maintained tag (8.1-fpm, 8.2-fpm, 8.3-fpm …)
+#   • Default is 8.3-fpm if no --build-arg is supplied
+# ──────────────────────────────────────────────────────────────────────
+ARG PHP_VERSION=8.3
+FROM php:${PHP_VERSION}-fpm
 
+# ────────────── 0. Shared ENV ─────────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_DISABLE_XDEBUG_WARN=1
 
-# 1) System & PHP extensions ---------------------------------------------------
+# ────────────── 1. System & PHP extensions ───────────────────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         default-mysql-client vim sudo git unzip zip \
@@ -181,25 +188,25 @@ RUN apt-get update && \
     \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js and npm ------------------------------------------------------
+# ────────────── 2. Node.js & npm ──────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     npm install -g npm@latest
 
-# 3) Composer & WP-CLI ---------------------------------------------------------
+# ────────────── 3. Composer & WP-CLI ─────────────────────────────────
 RUN curl -sS https://getcomposer.org/installer | php && \
     mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
     curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
     chmod +x /usr/local/bin/wp
 
-# 4) Copy configs & Pete installer --------------------------------------------
+# ────────────── 4. Pete configs & helper scripts (unchanged) ─────────
 COPY php.ini                 /usr/local/etc/php/
 COPY .gitconfig              /root/.gitconfig
 COPY pete_install.sh         /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh && \
     chown www-data:www-data  /usr/local/bin/pete_install.sh
 
-# 5) Create dirs & sudo rules Pete expects ------------------------------------
+# sudo rules, pma template, etc. (same as before)
 RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     printf '%s\n' \
      'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*, /usr/bin/docker exec wp-pete-docker-apache-1 apachectl -k graceful' > /etc/sudoers.d/www-data && \
@@ -207,19 +214,15 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chown -R www-data:www-data /var/www
 
 COPY config.inc.php.custom /opt/pma-config/
-# Replace whatever is currently set for $cfg['blowfish_secret']
-# with the literal placeholder '__BLOWFISH__'
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 
-# 7) Working dir, ownership, expose FPM ---------------------------------------
+# ────────────── 5. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
-
 EXPOSE 9000
-# default user is root now; no USER line
-ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
-# pete_install.sh will exec php-fpm as www-data
 
+# Delegates to Pete’s installer, which eventually execs php-fpm
+ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 ```
 
 ========================================
@@ -416,7 +419,10 @@ services:
           - demo3.petelocal.net
           - demo3.wordpresspete.org
   php:
-    build: ./php
+    build:
+      context: ./php
+      args:
+        PHP_VERSION: "${PHP_VERSION}"
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -444,6 +450,7 @@ services:
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
+      PHP_VERSION: 8.2
   db:
     image: mariadb:10.6
     restart: always
@@ -468,5 +475,393 @@ volumes:
   pma_data:
   ssl_data:
   apache_logs:
+```
+
+========================================
+
+**php/Dockerfile**
+```
+# ──────────────────────────────────────────────────────────────────────
+# WordPress Pete – parameterised PHP-FPM image
+#   • Build with any officially-maintained tag (8.1-fpm, 8.2-fpm, 8.3-fpm …)
+#   • Default is 8.3-fpm if no --build-arg is supplied
+# ──────────────────────────────────────────────────────────────────────
+ARG PHP_VERSION=8.3
+FROM php:${PHP_VERSION}-fpm
+
+# ────────────── 0. Shared ENV ─────────────────────────────────────────
+ENV DEBIAN_FRONTEND=noninteractive \
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_DISABLE_XDEBUG_WARN=1
+
+# ────────────── 1. System & PHP extensions ───────────────────────────
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        default-mysql-client vim sudo git unzip zip \
+        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libzip-dev \
+        libonig-dev libxml2-dev \
+        python3 python3-pip python3-jinja2 \
+        python3-pandas python3-requests \
+        openssh-client \
+        docker.io \
+        certbot python3-certbot-apache \
+        curl ca-certificates && \
+    \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+        pip3 install --no-cache-dir gdown python-dotenv && \
+    docker-php-ext-configure gd --with-freetype --with-jpeg && \
+    docker-php-ext-install -j"$(nproc)" \
+        mysqli pdo pdo_mysql gd zip opcache && \
+    pecl install redis && \
+    docker-php-ext-enable redis && \
+    \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ────────────── 2. Node.js & npm ──────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
+# ────────────── 3. Composer & WP-CLI ─────────────────────────────────
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
+    curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x /usr/local/bin/wp
+
+# ────────────── 4. Pete configs & helper scripts (unchanged) ─────────
+COPY php.ini                 /usr/local/etc/php/
+COPY .gitconfig              /root/.gitconfig
+COPY pete_install.sh         /usr/local/bin/pete_install.sh
+RUN chmod +x /usr/local/bin/pete_install.sh && \
+    chown www-data:www-data  /usr/local/bin/pete_install.sh
+
+# sudo rules, pma template, etc. (same as before)
+RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
+    printf '%s\n' \
+     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*, /usr/bin/docker exec wp-pete-docker-apache-1 apachectl -k graceful' > /etc/sudoers.d/www-data && \
+    chmod 440 /etc/sudoers.d/www-data && \
+    chown -R www-data:www-data /var/www
+
+COPY config.inc.php.custom /opt/pma-config/
+RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
+        /opt/pma-config/config.inc.php.custom
+
+# ────────────── 5. Runtime defaults ──────────────────────────────────
+WORKDIR /var/www/html
+EXPOSE 9000
+
+# Delegates to Pete’s installer, which eventually execs php-fpm
+ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
+```
+
+========================================
+
+**php/pete_install.sh**
+```bash
+#!/bin/bash
+set -e
+
+# 1) Wait for MySQL to be ready
+echo "Waiting for MySQL..."
+until mysqladmin ping -h db --silent; do
+  sleep 3
+done
+chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
+
+
+# 3) Full Pete install (only once)
+if [ ! -f /var/www/html/.installed ]; then
+  echo "#######################################"
+  echo "Starting WordPress Pete installation..."
+  echo "#######################################"
+
+  mkdir -p /var/www/html/wwwlog/Pete
+  chown -R www-data:www-data /var/www/html/wwwlog
+  rm -rf /var/www/html/Pete
+  cd /var/www/html
+
+  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  cd Pete
+
+  #git fetch --tags
+  #latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  #git checkout $latestTag
+
+  latestTag=11.1
+  git checkout php_select
+
+  # Reset composer & env
+  rm -f auth.json composer.json
+  cp composer_original.json composer.json
+  cp .env.example .env
+
+  cat <<EOF >> .env
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=${PETE_DB_NAME}
+DB_USERNAME=${PETE_DB_USER}
+DB_PASSWORD=${PETE_DB_PASSWORD}
+PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
+APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
+APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
+APACHE_CERTBOT_URL=${APACHE_CERTBOT_URL}
+PETE_DASHBOARD_URL=https://dashboard.wordpresspete.com
+PETE_DEMO=inactive
+PETE_ENVIRONMENT=production
+PETE_DEBUG=inactive
+EOF
+
+  # Install PHP deps & migrate
+  rm -rf vendor
+  COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev
+  php artisan key:generate
+  php artisan migrate
+
+  # Add general options
+  php artisan addoption --option_name=os --option_value=docker
+  php artisan addoption --option_name=server_status --option_value=off
+  php artisan addoption --option_name=parent_version --option_value=11
+  php artisan addoption --option_name=version --option_value="$latestTag"
+  php artisan addoption --option_name=app_root --option_value=/var/www/html
+  php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
+  php artisan addoption --option_name=server --option_value=apache
+  php artisan addoption --option_name=server_version --option_value=24
+  php artisan addoption --option_name=os_version --option_value=bionic
+  php artisan addoption --option_name=os_distribution --option_value=ubuntu
+  php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
+  php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
+  php artisan addoption --option_name=phpmyadmin_status --option_value=off
+  php artisan addoption --option_name=security_status --option_value=on
+
+  # Create needed dirs & perms
+  mkdir -p public/uploads public/export trash storage storage/logs
+  touch storage/logs/laravel.log
+  mkdir -p /var/www/html/wwwlog/Pete /var/www/html/wwwlog/example1
+  composer dump-autoload --ignore-platform-reqs
+
+  # Mark as installed
+  chown -R www-data:www-data /var/www/html/Pete 
+  echo "done" > /var/www/html/.installed
+  echo "#######################################"
+  echo "WordPress Pete installation completed"
+  echo "#######################################"
+
+fi
+
+# 4) Post-install setup
+echo "#######################################"
+echo "Launching WordPress Pete..."
+echo "#######################################"
+
+# SSH key (for private repos, if needed)
+SSH_DIR="${HOME}/.ssh"
+if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
+  mkdir -p "${SSH_DIR}"
+  ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
+  chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
+  chown -R www-data:www-data "${SSH_DIR}"
+fi
+
+#domain_template for development
+pete_environment=${PETE_ENVIRONMENT}
+if [ "$pete_environment" = "development" ]; then
+  cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+else
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
+fi
+
+###############################################################################
+# phpMyAdmin bootstrap (runs only once per empty pma_data volume)
+###############################################################################
+PMA_DIR="/usr/src/phpmyadmin"                      # shared volume mount-point
+PMA_CFG_TMPL="/opt/pma-config/config.inc.php.custom"
+PMA_CFG_DEST="${PMA_DIR}/config.inc.php"
+PMA_VERSION="5.2.2"
+
+if [ ! -f "${PMA_DIR}/index.php" ]; then
+    echo "→ Installing phpMyAdmin ${PMA_VERSION} into ${PMA_DIR} …"
+    curl -fsSL \
+      "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz
+    mkdir -p "${PMA_DIR}"
+    tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+    rm /tmp/pma.tar.gz
+fi
+
+# ---------------------------------------------------------------------------
+# Copy / template the main config only if it does not exist yet
+# ---------------------------------------------------------------------------
+if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
+    echo "→ Creating phpMyAdmin config …"
+
+    # Use the secret from .env, or generate one on the fly
+    BF_SECRET=${BLOWFISH_SECRET:-$(head -c32 /dev/urandom | base64)}
+
+    # Copy template → destination, substituting the placeholder
+    sed "s#__BLOWFISH__#${BF_SECRET}#" "${PMA_CFG_TMPL}" > "${PMA_CFG_DEST}"
+    chown www-data:www-data "${PMA_CFG_DEST}"
+fi
+###############################################################################
+
+
+# 5) Finally delegate to the official Apache entrypoint
+exec php-fpm 
+
+```
+
+========================================
+
+**php/php.ini**
+```
+memory_limit = 2G
+upload_max_filesize = 1024M
+post_max_size = 1024M
+max_execution_time = 600
+default_socket_timeout = 600
+
+; OPcache
+opcache.enable=1
+opcache.memory_consumption=256
+opcache.max_accelerated_files=20000
+opcache.revalidate_freq=2
+opcache.validate_timestamps=1
+```
+
+========================================
+
+**php/docker-entrypoint.sh**
+```bash
+#!/usr/bin/env bash
+set -e
+
+# Only bootstrap wp-config.php once
+WP_CONFIG=/var/www/html/wp-config.php
+if [ ! -f "$WP_CONFIG" ]; then
+  cp /var/www/html/wp-config-sample.php "$WP_CONFIG"
+
+  # Inject our Docker-compose env vars
+  sed -i "s/database_name_here/${DB_NAME}/"       "$WP_CONFIG"
+  sed -i "s/username_here/${DB_USER}/"            "$WP_CONFIG"
+  sed -i "s/password_here/${DB_PASS}/"            "$WP_CONFIG"
+  sed -i "s/'DB_HOST', 'localhost'/'DB_HOST', 'db'/" "$WP_CONFIG"
+
+  chown www-data:www-data "$WP_CONFIG"
+fi
+
+# Hand off to the official entrypoint (sets up PHP, then runs CMD)
+exec docker-php-entrypoint "$@"
+```
+
+========================================
+
+**docker-compose.yml**
+```
+services:
+  apache:
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
+        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
+        APACHE_THREADS:       ${APACHE_THREADS}
+        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
+        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
+        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+    restart: always
+    volumes:
+      - wp_data:/var/www/html           
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2 
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      default:
+        aliases:
+          - demo3.petelocal.net
+          - demo3.wordpresspete.org
+  php:
+    build:
+      context: ./php
+      args:
+        PHP_VERSION: "${PHP_VERSION}"
+    restart: always
+    depends_on:                # ← php waits for apache, db, redis
+      - apache
+      - db
+      - redis
+    expose:
+      - "9000"                           
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2      
+    env_file: .env                       
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      REDIS_HOST: redis
+      PHP_VERSION: 8.2
+  db:
+    image: mariadb:10.6
+    restart: always
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - ./db-config/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  wp_data:
+  db_data:
+  ssh_data:
+  apache_sites_available:
+  apache_sites_enabled:
+  pma_data:
+  ssl_data:
+  apache_logs:
+```
+
+========================================
+
+**.devcontainer/devcontainer.json**
+```json
+{
+  "name": "WordPress Pete",
+  "dockerComposeFile": [
+    "docker-compose.yml"
+  ],
+  "service": "wordpress",
+  "workspaceFolder": "/var/www/html",
+  "shutdownAction": "none"
+}
 ```
 

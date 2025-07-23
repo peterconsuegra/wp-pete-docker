@@ -32,7 +32,10 @@ services:
           - demo3.petelocal.net
           - demo3.wordpresspete.org
   php:
-    build: ./php
+    build:
+      context: ./php
+      args:
+        PHP_VERSION: "${PHP_VERSION}"
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -60,6 +63,7 @@ services:
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
+      PHP_VERSION: 8.2
   db:
     image: mariadb:10.6
     restart: always
