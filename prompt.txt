@@ -583,12 +583,12 @@ if [ ! -f /var/www/html/.installed ]; then
   git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
   cd Pete
 
-  #git fetch --tags
-  #latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
-  #git checkout $latestTag
+  git fetch --tags
+  latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  git checkout $latestTag
 
-  latestTag=11.1
-  git checkout php_select
+  #latestTag=11.1
+  #git checkout php_select
 
   # Reset composer & env
   rm -f auth.json composer.json
