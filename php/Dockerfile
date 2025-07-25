@@ -11,27 +11,38 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_DISABLE_XDEBUG_WARN=1
 
-# ────────────── 1. System & PHP extensions ───────────────────────────
+# ────────────── 1. System & PHP extensions (WebP ready) ──────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        default-mysql-client vim sudo git unzip zip \
-        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libzip-dev \
-        libonig-dev libxml2-dev \
-        python3 python3-pip python3-jinja2 \
-        python3-pandas python3-requests \
-        openssh-client \
-        docker.io \
-        certbot python3-certbot-apache \
-        curl ca-certificates && \
+        # base utilities
+        default-mysql-client vim sudo git unzip zip curl ca-certificates \
+        # PHP image libs
+        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
+        libzip-dev libonig-dev libxml2-dev \
+        # Imagick deps
+        libmagickwand-dev \
+        # Python helpers
+        python3 python3-pip python3-jinja2 python3-pandas python3-requests \
+        # misc tools
+        openssh-client docker.io certbot python3-certbot-apache && \
     \
+    # Python packages
     PIP_BREAK_SYSTEM_PACKAGES=1 \
         pip3 install --no-cache-dir gdown python-dotenv && \
-    docker-php-ext-configure gd --with-freetype --with-jpeg && \
+    \
+    # ------- compile GD with WebP ------- \
+    docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+        --with-webp && \
     docker-php-ext-install -j"$(nproc)" \
         mysqli pdo pdo_mysql gd zip opcache && \
-    pecl install redis && \
-    docker-php-ext-enable redis && \
     \
+    # ------- PECL extensions: Imagick (+WebP) & Redis ------- \
+    pecl install imagick redis && \
+    docker-php-ext-enable imagick redis && \
+    \
+    # clean image
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ────────────── 2. Node.js & npm ──────────────────────────────────────
