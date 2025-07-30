@@ -4,7 +4,12 @@
 #   • Default is 8.3-fpm if no --build-arg is supplied
 # ──────────────────────────────────────────────────────────────────────
 ARG PHP_VERSION=8.3
+
+
 FROM php:${PHP_VERSION}-fpm
+
+ARG PETE_ENVIRONMENT=production
+ENV PETE_ENVIRONMENT=${PETE_ENVIRONMENT}
 
 # ────────────── 0. Shared ENV ─────────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -56,8 +61,20 @@ RUN curl -sS https://getcomposer.org/installer | php && \
     curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
     chmod +x /usr/local/bin/wp
 
-# ────────────── 4. Pete configs & helper scripts (unchanged) ─────────
-COPY php.ini                 /usr/local/etc/php/
+# ────────────── 4. Set php.ini ─────────
+COPY php_dev.ini  /tmp/php_dev.ini
+COPY php_prod.ini /tmp/php_prod.ini
+
+RUN if [ "$PETE_ENVIRONMENT" = "development" ]; then \
+        cp /tmp/php_dev.ini  /usr/local/etc/php/php.ini ; \
+        echo "Using development INI"; \
+    else \
+        cp /tmp/php_prod.ini /usr/local/etc/php/php.ini ; \
+        echo "Using production INI"; \
+    fi && \
+    rm -f /tmp/php_dev.ini /tmp/php_prod.ini
+
+# ────────────── 5. Pete configs & helper scripts ─────────
 COPY .gitconfig              /root/.gitconfig
 COPY pete_install.sh         /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh && \
@@ -74,7 +91,7 @@ COPY config.inc.php.custom /opt/pma-config/
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 
-# ────────────── 5. Runtime defaults ──────────────────────────────────
+# ────────────── 6. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
 EXPOSE 9000
 

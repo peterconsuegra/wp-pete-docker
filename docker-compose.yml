@@ -35,6 +35,7 @@ services:
     build:
       context: ./php
       args:
+        PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
     restart: always
     depends_on:                # ← php waits for apache, db, redis
