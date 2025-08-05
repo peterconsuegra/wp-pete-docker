@@ -31,6 +31,9 @@ services:
         aliases:
           - demo3.petelocal.net
           - demo3.wordpresspete.org
+          - wordpresspete.petelocal.net
+          - dashboard.wordpresspete.petelocal.net
+          - dashboard.wordpresspete.com
   php:
     build:
       context: ./php

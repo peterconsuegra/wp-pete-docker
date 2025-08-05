@@ -20,7 +20,7 @@ This **README** groups the most‑used commands and maintenance tasks for runnin
 
 ```bash
 # Build images (if needed) and start containers in the background
-docker compose up --build -d
+docker compose up --build
 
 # Shut everything down
 docker compose down
