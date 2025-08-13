@@ -91,6 +91,12 @@ COPY config.inc.php.custom /opt/pma-config/
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 
+# Disable MySQL SSL requirement for all CLI tools in this container
+ENV MYSQL_CLIENT_FLAGS="--ssl-mode=DISABLED"
+
+# Optional: make mysql and mysqladmin automatically use it
+RUN echo "[client]\nssl-mode=DISABLED\n" > /etc/mysql/conf.d/disable-ssl.cnf
+
 # ────────────── 6. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
 EXPOSE 9000
