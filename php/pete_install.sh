@@ -3,7 +3,27 @@ set -e
 
 # 1) Wait for MySQL to be ready
 echo "Waiting for MySQL..."
-until mysqladmin --protocol=TCP -h db -u root -p"${MYSQL_ROOT_PASSWORD}" ping --silent; do
+
+# Extract host/port safely from WORDPRESS_DB_HOST, or default to db:3306
+DB_HOST="${WORDPRESS_DB_HOST%%:*}"; DB_PORT="${WORDPRESS_DB_HOST##*:}"
+[ -z "$DB_HOST" ] && DB_HOST="db"
+[ "$DB_PORT" = "$WORDPRESS_DB_HOST" ] && DB_PORT="3306"
+
+# Prefer MYSQL_ROOT_PASSWORD; fall back to PETE_ROOT_PASSWORD if needed
+DB_ROOT_PASS="${MYSQL_ROOT_PASSWORD:-$PETE_ROOT_PASSWORD}"
+
+# 60 tries x 3s ≈ 3 minutes max
+TRIES=0
+until mysqladmin --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u root ${DB_ROOT_PASS:+-p"$DB_ROOT_PASS"} ping --silent; do
+  TRIES=$((TRIES+1))
+  echo "… still waiting for MySQL at ${DB_HOST}:${DB_PORT} (try ${TRIES})"
+  if [ $TRIES -ge 60 ]; then
+    echo "ERROR: MySQL did not become ready in time. Dumping quick diagnostics:"
+    echo "Env MYSQL_ROOT_PASSWORD set? $([ -n "$MYSQL_ROOT_PASSWORD" ] && echo yes || echo no)"
+    echo "Env PETE_ROOT_PASSWORD set? $([ -n "$PETE_ROOT_PASSWORD" ] && echo yes || echo no)"
+    echo "DNS resolution for ${DB_HOST}: $(getent hosts "$DB_HOST" || echo 'N/A')"
+    exit 1
+  fi
   sleep 3
 done
 
