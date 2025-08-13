@@ -3,32 +3,9 @@ set -e
 
 # 1) Wait for MySQL to be ready
 echo "Waiting for MySQL..."
-
-# Extract host and port from WORDPRESS_DB_HOST or default to db:3306
-DB_HOST="${WORDPRESS_DB_HOST%%:*}"; DB_PORT="${WORDPRESS_DB_HOST##*:}"
-[ -z "$DB_HOST" ] && DB_HOST="db"
-[ "$DB_PORT" = "$WORDPRESS_DB_HOST" ] && DB_PORT="3306"
-
-# Prefer MYSQL_ROOT_PASSWORD; fall back to PETE_ROOT_PASSWORD
-DB_ROOT_PASS="${MYSQL_ROOT_PASSWORD:-$PETE_ROOT_PASSWORD}"
-
-# Default MYSQL_CLIENT_FLAGS if not provided
-MYSQL_CLIENT_FLAGS="${MYSQL_CLIENT_FLAGS:---ssl-mode=DISABLED}"
-
-TRIES=0
-until mysqladmin --protocol=TCP \
-  -h "$DB_HOST" -P "$DB_PORT" \
-  -u root -p"$DB_ROOT_PASS" \
-  $MYSQL_CLIENT_FLAGS ping --silent; do
-    TRIES=$((TRIES+1))
-    echo "… still waiting for MySQL at ${DB_HOST}:${DB_PORT} (try ${TRIES})"
-    if [ $TRIES -ge 60 ]; then
-        echo "ERROR: MySQL did not become ready in time."
-        exit 1
-    fi
-    sleep 3
+until mysqladmin ping -h db --silent; do
+  sleep 3
 done
-
 chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
 
 
@@ -124,9 +101,6 @@ if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
   ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
   chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
   chown -R www-data:www-data "${SSH_DIR}"
-  chmod 700 ~/.ssh
-  chmod 600 ~/.ssh/id_rsa
-  chmod 644 ~/.ssh/id_rsa.pub
 fi
 
 #domain_template for development
