@@ -101,6 +101,9 @@ if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
   ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
   chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
   chown -R www-data:www-data "${SSH_DIR}"
+  chmod 700 ~/.ssh
+  chmod 600 ~/.ssh/id_rsa
+  chmod 644 ~/.ssh/id_rsa.pub
 fi
 
 #domain_template for development

@@ -34,6 +34,7 @@ services:
           - wordpresspete.petelocal.net
           - dashboard.wordpresspete.petelocal.net
           - dashboard.wordpresspete.com
+          - wordpresspete.com
   php:
     build:
       context: ./php
