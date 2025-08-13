@@ -3,9 +3,10 @@ set -e
 
 # 1) Wait for MySQL to be ready
 echo "Waiting for MySQL..."
-until mysqladmin ping -h db --silent; do
+until mysqladmin --protocol=TCP -h db -u root -p"${MYSQL_ROOT_PASSWORD}" ping --silent; do
   sleep 3
 done
+
 chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
 
 
