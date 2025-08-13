@@ -178,6 +178,9 @@ composer dump-autoload -o       # Re‑generate manifest
 ```
 
 ---
+TESTING MOVING TEST SITE INSIDE DOCKER FOLDER:
+docker cp /Users/pedroconsuegra/Sites/wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
+docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
 
 \### Common test URLs
 
