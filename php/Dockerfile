@@ -91,6 +91,11 @@ COPY config.inc.php.custom /opt/pma-config/
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 
+# Disable client-side SSL requirement (mysql, mysqladmin, etc.)
+RUN mkdir -p /etc/mysql/conf.d && \
+    printf "[client]\nssl-mode=DISABLED\n\n[mysql]\nssl-mode=DISABLED\n\n[mysqladmin]\nssl-mode=DISABLED\n" \
+    > /etc/mysql/conf.d/disable-ssl.cnf
+
 # ────────────── 6. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
 EXPOSE 9000
