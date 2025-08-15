@@ -76,9 +76,11 @@ RUN if [ "$PETE_ENVIRONMENT" = "development" ]; then \
 
 # ────────────── 5. Pete configs & helper scripts ─────────
 COPY .gitconfig              /root/.gitconfig
-COPY pete_install.sh         /usr/local/bin/pete_install.sh
-RUN chmod +x /usr/local/bin/pete_install.sh && \
-    chown www-data:www-data  /usr/local/bin/pete_install.sh
+COPY pete_install.sh /usr/local/bin/pete_install.sh
+RUN chmod +x /usr/local/bin/pete_install.sh \
+ && chown www-data:www-data /usr/local/bin/pete_install.sh \
+ && apt-get update && apt-get install -y --no-install-recommends dos2unix && rm -rf /var/lib/apt/lists/* \
+ && dos2unix /usr/local/bin/pete_install.sh || true
 
 # sudo rules, pma template, etc. (same as before)
 RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \

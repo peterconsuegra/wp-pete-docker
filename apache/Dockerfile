@@ -141,9 +141,15 @@ EXPOSE 80
 
 # wait-helper script
 COPY start.sh /usr/local/bin/start.sh
-RUN chmod +x /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh \
+ && apt-get update && apt-get install -y --no-install-recommends dos2unix && rm -rf /var/lib/apt/lists/* \
+ && dos2unix /usr/local/bin/start.sh \
+             /usr/local/bin/reload_apache.cgi \
+             /usr/local/bin/issue_cert.cgi \
+             /usr/local/bin/modsecurity_status.cgi \
+             /usr/local/bin/toggle_modsec.sh || true
 
 # --- new: ensure volume will be writable by Pete ---
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 
-CMD ["start.sh"]
+CMD ["/usr/local/bin/start.sh"]
