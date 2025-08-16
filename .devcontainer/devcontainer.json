@@ -1,7 +1,0 @@
-{
-    "name": "WordPress Pete",
-    "dockerComposeFile": ["docker-compose.yml"],
-    "service": "wordpress",
-    "workspaceFolder": "/var/www/html",
-    "shutdownAction": "none"
-  }
