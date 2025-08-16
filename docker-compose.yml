@@ -1,0 +1,94 @@
+services:
+  apache:
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
+        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
+        APACHE_THREADS:       ${APACHE_THREADS}
+        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
+        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
+        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+    restart: always
+    volumes:
+      - wp_data:/var/www/html           
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2 
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      default:
+        aliases:
+          - demo3.petelocal.net
+          - demo3.wordpresspete.org
+          - wordpresspete.petelocal.net
+          - dashboard.wordpresspete.petelocal.net
+          - dashboard.wordpresspete.com
+          - wordpresspete.com
+  php:
+    build:
+      context: ./php
+      args:
+        PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
+        PHP_VERSION: "${PHP_VERSION}"
+    restart: always
+    depends_on:                # ← php waits for apache, db, redis
+      - apache
+      - db
+      - redis
+    expose:
+      - "9000"                           
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2      
+    env_file: .env                       
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      REDIS_HOST: redis
+      PHP_VERSION: 8.2
+  db:
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    volumes:
+      - db_data:/var/lib/mysql
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  wp_data:
+  db_data:
+  ssh_data:
+  apache_sites_available:
+  apache_sites_enabled:
+  pma_data:
+  ssl_data:
+  apache_logs:

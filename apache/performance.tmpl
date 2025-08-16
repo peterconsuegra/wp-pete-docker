@@ -1,0 +1,55 @@
+#######################################################################
+# 1) MPM-event – concurrency limits (placeholders filled at boot)
+#######################################################################
+
+<IfModule mpm_event_module>
+    StartServers          {{START_SERVERS}}
+    ServerLimit           {{SERVER_LIMIT}}
+    ThreadsPerChild       {{THREADS_PER_CHILD}}
+    MaxRequestWorkers     {{MAX_REQUEST_WORKERS}}
+    MinSpareThreads       {{SPARE_MIN}}
+    MaxSpareThreads       {{SPARE_MAX}}
+    MaxConnectionsPerChild 10000
+</IfModule>
+
+#######################################################################
+# 2) Core server tweaks
+#######################################################################
+ServerTokens Prod
+ServerSignature Off
+
+KeepAlive On
+MaxKeepAliveRequests 100
+KeepAliveTimeout 2
+
+#######################################################################
+# 3) HTTP/2 (+ server push)
+#######################################################################
+Protocols h2 http/1.1
+H2Push          on
+H2PushPriority  *                       after
+H2PushPriority  text/css                before
+H2PushPriority  image/vnd.microsoft.icon after
+
+# 4) Compression – gzip / deflate
+#######################################################################
+<IfModule mod_deflate.c>
+     AddOutputFilterByType DEFLATE \
+         text/html text/plain text/css text/xml text/javascript \
+         application/javascript application/json image/svg+xml
+ </IfModule>
+
+# 5) Setting Apache CACHE
+#######################################################################
+<IfModule mod_cache_disk.c>
+    CacheRoot    /var/cache/apache2/mod_cache_disk
+</IfModule>
+
+#######################################################################
+# 6) ModSecurity – skip rules on static files to save CPU
+#######################################################################
+<IfModule security2_module>
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js)$">
+      SecRuleEngine Off
+  </LocationMatch>
+</IfModule>
