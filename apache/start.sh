@@ -20,5 +20,26 @@ chown -R www-data:www-data /var/cache/apache2
 chmod -R 750 /var/cache/apache2  
 chmod 750 /var/cache/apache2/mod_cache_disk/tmp
 
+
+# --- ADD THIS BLOCK ---------------------------------------------------
+# Lightweight logrotate scheduler (no cron needed)
+if command -v logrotate >/dev/null 2>&1; then
+  LOGROTATE_CONF="/etc/logrotate.conf"
+  LOGROTATE_STATE="/var/lib/logrotate/status"
+  INTERVAL="${LOGROTATE_INTERVAL:-86400}"    # seconds; default: 24h
+
+  (
+    # Run once immediately to catch an oversized file at boot
+    /usr/sbin/logrotate -s "$LOGROTATE_STATE" "$LOGROTATE_CONF" || true
+    # Then loop forever
+    while sleep "$INTERVAL"; do
+      /usr/sbin/logrotate -s "$LOGROTATE_STATE" "$LOGROTATE_CONF" || true
+    done
+  ) &
+fi
+
 exec apachectl -D FOREGROUND
+
+
+
 

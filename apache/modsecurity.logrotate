@@ -1,0 +1,17 @@
+/var/log/apache2/modsec_audit.log {
+    daily
+    maxsize 50M          
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress         
+    dateext
+    dateformat -%Y%m%d
+    copytruncate
+    # create 0640 www-data www-data   
+    sharedscripts
+    postrotate
+        /usr/sbin/apachectl -k graceful >/dev/null 2>&1 || true
+    endscript
+}

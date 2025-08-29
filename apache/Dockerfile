@@ -5,12 +5,37 @@ FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends logrotate \
       apache2 apache2-utils \
       libapache2-mod-security2 \
       certbot python3-certbot-apache \
       sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
+
+# 1) Provide ModSecurity rotation policy
+COPY modsecurity.logrotate /etc/logrotate.d/modsecurity
+
+# 2) Ensure logrotate state file exists (prevents duplicate rotations)
+RUN mkdir -p /var/lib/logrotate && \
+    touch /var/lib/logrotate/status && \
+    chmod 0644 /var/lib/logrotate/status
+
+# 3) Make sure the audit log exists and is writable (you already do this later, but harmless here)
+RUN mkdir -p /var/log/apache2 && \
+    touch /var/log/apache2/modsec_audit.log && \
+    chown -R www-data:www-data /var/log/apache2 && \
+    chmod 0640 /var/log/apache2/modsec_audit.log
+
+# ---- patch the stock apache2 logrotate to stop rotating modsec_audit.log
+# Replace the wildcard stanza "/var/log/apache2/*.log {" with an explicit list
+# (access/error/other_vhosts_access only). This avoids duplicate handling.
+RUN set -e; \
+  tmp="$(mktemp)"; \
+  awk 'BEGIN{re="^/var/log/apache2/\\*\\.log[[:space:]]*\\{"} \
+       $0 ~ re {print "/var/log/apache2/access.log /var/log/apache2/error.log /var/log/apache2/other_vhosts_access.log {"; next} \
+       {print}' /etc/logrotate.d/apache2 > "$tmp" \
+  && cat "$tmp" > /etc/logrotate.d/apache2 \
+  && rm -f "$tmp"
 
 RUN a2dismod mpm_prefork && \
     a2enmod mpm_event proxy proxy_fcgi rewrite headers expires ssl \
