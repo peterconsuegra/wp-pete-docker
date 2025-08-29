@@ -33,6 +33,7 @@ services:
           - demo3.wordpresspete.org
           - wordpresspete.petelocal.net
           - dashboard.wordpresspete.petelocal.net
+          - mydashboard.wordpresspete.petelocal.net
           - dashboard.wordpresspete.com
           - wordpresspete.com
   php:
