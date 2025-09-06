@@ -9,6 +9,11 @@ done
 
 chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
 
+cd /var/www/html/Pete
+sudo chgrp -R $(id -g) storage bootstrap/cache
+sudo chmod -R g+rwX storage bootstrap/cache
+sudo find storage bootstrap/cache -type d -exec chmod g+s {} \;
+
 
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then

@@ -36,6 +36,7 @@ services:
           - dashboard.wordpresspete.petelocal.net
           - mydashboard.wordpresspete.petelocal.net
           - dashboard.wordpresspete.com
+          - mydashboard.wordpresspete.com
           - wordpresspete.com
   php:
     build:
