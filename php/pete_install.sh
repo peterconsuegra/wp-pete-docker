@@ -9,11 +9,6 @@ done
 
 chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
 
-cd /var/www/html/Pete
-sudo chgrp -R $(id -g) storage bootstrap/cache
-sudo chmod -R g+rwX storage bootstrap/cache
-sudo find storage bootstrap/cache -type d -exec chmod g+s {} \;
-
 
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
@@ -32,9 +27,6 @@ if [ ! -f /var/www/html/.installed ]; then
   git fetch --tags
   latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
   git checkout $latestTag
-  
-  #latestTag=11.1
-  #git checkout php_select
 
   # Reset composer & env
   rm -f auth.json composer.json
@@ -60,14 +52,54 @@ EOF
 
   # Install PHP deps & migrate
   rm -rf vendor
-  COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev
+
+  mysql --protocol=TCP -h db -uroot -p"${PETE_ROOT_PASSWORD}" <<SQL
+CREATE DATABASE IF NOT EXISTS \`${PETE_DB_NAME}\`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS '${PETE_DB_USER}'@'%' IDENTIFIED BY '${PETE_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON \`${PETE_DB_NAME}\`.* TO '${PETE_DB_USER}'@'%';
+FLUSH PRIVILEGES;
+
+USE \`${PETE_DB_NAME}\`;
+CREATE TABLE IF NOT EXISTS \`options\` (
+  \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  \`option_name\` VARCHAR(191) NOT NULL UNIQUE,
+  \`title\` VARCHAR(191) NULL,
+  \`category\` VARCHAR(191) NULL,
+  \`visible\` VARCHAR(191) NULL,
+  \`option_value\` LONGTEXT NULL,
+  \`option_date\` DATETIME NULL,
+  \`version\` VARCHAR(50) NULL,
+  \`created_at\` TIMESTAMP NULL,
+  \`updated_at\` TIMESTAMP NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL
+
+
+  # 1) install vendor WITHOUT running composer scripts (avoids package:discover early)
+  COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev --no-scripts
+
+  # ensure DB + placeholder 'options' table exist before any artisan command
+
+
+  # 2) app key first (so Laravel can boot)
   php artisan key:generate
-  php artisan migrate
+
+  # 3) create tables BEFORE discovery; use --force in case APP_ENV=production
+  php artisan migrate --force
+
+  # 4) now it’s safe to run discovery (and any other composer scripts)
+  php artisan package:discover --ansi
+  # (optional but recommended)
+  php artisan config:cache
+  php artisan route:cache
 
   # Add general options
   php artisan addoption --option_name=os --option_value=docker
   php artisan addoption --option_name=server_status --option_value=off
-  php artisan addoption --option_name=parent_version --option_value=11
+  php artisan addoption --option_name=parent_version --option_value=13
   php artisan addoption --option_name=version --option_value="$latestTag"
   php artisan addoption --option_name=app_root --option_value=/var/www/html
   php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
