@@ -182,6 +182,15 @@ TESTING MOVING TEST SITE INSIDE DOCKER FOLDER:
 docker cp /Users/pedroconsuegra/Sites/wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
 docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
 
+Cloud Test
+docker cp /opt/wordpresspetepetelocalnet.tar.gz wordpress-pete-php-1:/var/www/html/
+docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
+
+Windows Test
+docker cp \Users\user\Sites\wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
+docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
+
+
 \### Common test URLs
 
 ```
