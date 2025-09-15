@@ -20,13 +20,13 @@ for kv in "${KV[@]}"; do
 done
 [ -n "$DOMAIN" ] && [ -n "$EMAIL" ] || { echo "Usage: ?domain=&email="; exit 0; }
 
-echo ">>> certbot --apache -d $DOMAIN -d www.$DOMAIN (this may take a minute) …"
+echo ">>> certbot --apache -d $DOMAIN (this may take a minute) …"
 # Run Certbot and capture *both* exit code & stdout
 OUT=$(sudo certbot --apache --non-interactive --agree-tos \
                    --reinstall \
                    --redirect \
                    --email "$EMAIL" \
-                   -d "$DOMAIN" -d "www.$DOMAIN" 2>&1)
+                   -d "$DOMAIN" 2>&1)
 CODE=$?
 
 echo "$OUT"
