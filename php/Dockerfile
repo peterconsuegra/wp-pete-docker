@@ -98,6 +98,10 @@ RUN mkdir -p /etc/mysql/conf.d && \
     printf "[client]\nssl=0\nskip_ssl\n\n[mysql]\nssl=0\nskip_ssl\n\n[mysqladmin]\nssl=0\nskip_ssl\n" \
     > /etc/mysql/conf.d/disable-ssl.cnf
 
+#PROGRAMMING SHORTCUTS
+RUN echo "alias gs='git status'" >> /etc/bash.bashrc
+RUN echo "alias prompt='python3 prompt2.py -e prompt.env'" >> /etc/bash.bashrc
+
 # ────────────── 6. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
 EXPOSE 9000
