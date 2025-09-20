@@ -104,6 +104,9 @@ RUN echo "alias prompt='python3 prompt2.py -e prompt.env'" >> /etc/bash.bashrc
 RUN echo "alias cphp='docker compose exec php bash'" >> /etc/bash.bashrc
 RUN echo "alias capache='docker compose exec apache bash'" >> /etc/bash.bashrc
 RUN echo "alias dbuild='docker compose up --build'" >> /etc/bash.bashrc
+RUN echo "alias dphp='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
+RUN echo "alias dapache='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
+
 
 # ────────────── 6. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
