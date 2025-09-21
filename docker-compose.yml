@@ -51,7 +51,7 @@ services:
       - "9000"                           
     volumes:
       - wp_data:/var/www/html
-      - ssh_data:/root/.ssh
+      - ssh_data:/var/www/.ssh
       - apache_sites_available:/etc/apache2/sites-available
       - apache_sites_enabled:/etc/apache2/sites-enabled
       - pma_data:/usr/src/phpmyadmin

@@ -133,13 +133,41 @@ echo "Launching WordPress Pete..."
 echo "#######################################"
 
 # SSH key (for private repos, if needed)
-SSH_DIR="${HOME}/.ssh"
-if [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
-  mkdir -p "${SSH_DIR}"
-  ssh-keygen -t rsa -N "" -f "${SSH_DIR}/id_rsa"
-  chmod 600 "${SSH_DIR}/id_rsa" "${SSH_DIR}/id_rsa.pub"
-  chown -R www-data:www-data "${SSH_DIR}"
+SSH_USER="www-data"
+SSH_HOME="$(getent passwd ${SSH_USER} | cut -d: -f6 || echo /var/www)"
+SSH_DIR="${SSH_HOME}/.ssh"
+
+# Create ~/.ssh with correct perms/owner
+install -d -m 700 -o "${SSH_USER}" -g "${SSH_USER}" "${SSH_DIR}"
+
+# Prefer ed25519; fall back to rsa if needed. Only generate if none exists.
+if [ ! -f "${SSH_DIR}/id_ed25519.pub" ] && [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
+  # Try ed25519 first
+  if sudo -u "${SSH_USER}" ssh-keygen -t ed25519 -N "" \
+        -C "www-data@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${SSH_DIR}/id_ed25519" >/dev/null 2>&1; then
+    :
+  else
+    # ed25519 might be unavailable on very old images; use rsa as fallback
+    sudo -u "${SSH_USER}" ssh-keygen -t rsa -b 4096 -N "" \
+        -C "www-data@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${SSH_DIR}/id_rsa" >/dev/null 2>&1
+  fi
 fi
+
+# Preload known_hosts to avoid interactive prompts on first git fetch/clone
+# (add the hosts you use—Bitbucket/GitHub shown here)
+for host in github.com bitbucket.org; do
+  if ! sudo -u "${SSH_USER}" sh -lc "ssh-keygen -F ${host} >/dev/null"; then
+    ssh-keyscan -T 5 "${host}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+  fi
+done
+
+# Tighten permissions (SSH is strict)
+chmod 700 "${SSH_DIR}"
+chmod 600 "${SSH_DIR}"/id_* 2>/dev/null || true
+chmod 644 "${SSH_DIR}"/id_*.pub "${SSH_DIR}/known_hosts" 2>/dev/null || true
+chown -R "${SSH_USER}:${SSH_USER}" "${SSH_DIR}"
 
 #domain_template for development
 pete_environment=${PETE_ENVIRONMENT}
