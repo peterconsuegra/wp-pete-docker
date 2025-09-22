@@ -174,6 +174,7 @@ pete_environment=${PETE_ENVIRONMENT}
 if [ "$pete_environment" = "development" ]; then
   cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+  cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v {$apache_reload_secret} -s {$sw} -k {$debug}";
 else
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
 fi
