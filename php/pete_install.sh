@@ -110,7 +110,6 @@ SQL
   php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
   php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
   php artisan addoption --option_name=phpmyadmin_status --option_value=off
-  php artisan addoption --option_name=security_status --option_value=on
 
   # Create needed dirs & perms
   mkdir -p public/uploads public/export trash storage storage/logs
@@ -174,9 +173,12 @@ pete_environment=${PETE_ENVIRONMENT}
 if [ "$pete_environment" = "development" ]; then
   cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+  echo "cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active"
   cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active
+  cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=off
 else
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
+  php artisan addoption --option_name=security_status --option_value=on
 fi
 
 ###############################################################################
