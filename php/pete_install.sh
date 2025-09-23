@@ -168,6 +168,42 @@ chmod 600 "${SSH_DIR}"/id_* 2>/dev/null || true
 chmod 644 "${SSH_DIR}"/id_*.pub "${SSH_DIR}/known_hosts" 2>/dev/null || true
 chown -R "${SSH_USER}:${SSH_USER}" "${SSH_DIR}"
 
+
+###############################################################################
+# Root user SSH key (useful for admin/one-off git or sftp tasks)
+###############################################################################
+ROOT_SSH_DIR="/root/.ssh"
+install -d -m 700 "${ROOT_SSH_DIR}"
+
+# Generate a key only if none exist yet (prefer ed25519; fallback to rsa)
+if [ ! -f "${ROOT_SSH_DIR}/id_ed25519.pub" ] && [ ! -f "${ROOT_SSH_DIR}/id_rsa.pub" ]; then
+  if ssh-keygen -t ed25519 -N "" \
+        -C "root@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${ROOT_SSH_DIR}/id_ed25519" >/dev/null 2>&1; then
+    :
+  else
+    ssh-keygen -t rsa -b 4096 -N "" \
+        -C "root@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${ROOT_SSH_DIR}/id_rsa" >/dev/null 2>&1
+  fi
+fi
+
+# Preload known_hosts (avoids prompts on first clone/fetch)
+for host in github.com bitbucket.org; do
+  if ! ssh-keygen -F "${host}" >/dev/null 2>&1; then
+    ssh-keyscan -T 5 "${host}" >> "${ROOT_SSH_DIR}/known_hosts" 2>/dev/null || true
+  fi
+done
+
+# Strict permissions for SSH
+chmod 700 "${ROOT_SSH_DIR}"
+chmod 600 "${ROOT_SSH_DIR}"/id_* 2>/dev/null || true
+chmod 644 "${ROOT_SSH_DIR}"/id_*.pub "${ROOT_SSH_DIR}/known_hosts" 2>/dev/null || true
+
+echo "Root SSH public key(s):"
+ls -1 "${ROOT_SSH_DIR}"/id_*.pub 2>/dev/null || true
+###############################################################################
+
 #domain_template for development
 pete_environment=${PETE_ENVIRONMENT}
 if [ "$pete_environment" = "development" ]; then
