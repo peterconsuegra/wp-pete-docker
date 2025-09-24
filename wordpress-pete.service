@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 # Absolute path to the folder that holds docker-compose.yml
-WorkingDirectory=/root/wordpress-pete
+WorkingDirectory=/opt/wordpress-pete
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down
 RemainAfterExit=yes
