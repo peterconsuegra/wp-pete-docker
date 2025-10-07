@@ -9,7 +9,6 @@ done
 
 chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
 
-
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
   echo "#######################################"
