@@ -177,6 +177,11 @@ rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
 composer dump-autoload -o       # Re‑generate manifest
 ```
 
+### 14. Start the stack in production
+docker compose pull
+docker compose build
+docker compose up -d
+
 ---
 TESTING MOVING TEST SITE INSIDE DOCKER FOLDER:
 docker cp /Users/pedroconsuegra/Sites/wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
