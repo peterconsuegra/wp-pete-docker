@@ -12,7 +12,7 @@ chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || tru
 # 3) Full Pete install (only once)
 if [ ! -f /var/www/html/.installed ]; then
   echo "#######################################"
-  echo "Starting WordPress Pete installation..."
+  echo "Starting Pete Panel installation..."
   echo "#######################################"
 
   mkdir -p /var/www/html/wwwlog/Pete
