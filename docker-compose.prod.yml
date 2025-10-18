@@ -1,0 +1,204 @@
+version: "2.4"
+
+networks:
+  frontend:       # public edge
+    driver: bridge
+  backend:        # private east-west
+    driver: bridge
+    internal: true
+
+volumes:
+  wp_data:
+  db_data:
+  ssh_data:
+  apache_sites_available:
+  apache_sites_enabled:
+  pma_data:
+  ssl_data:
+  apache_logs:
+  redis_data:
+
+services:
+
+  apache:
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
+        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
+        APACHE_THREADS:       ${APACHE_THREADS}
+        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
+        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
+        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+    restart: always
+    depends_on:
+      php:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - frontend
+      - backend
+    volumes:
+      - wp_data:/var/www/html
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
+      LOGROTATE_INTERVAL: 43200
+    # fast ephemeral dirs
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+      - /var/cache/apache2:rw,uid=33,gid=33,mode=0750,size=512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    # real limits (v2.4)
+    mem_limit: 1500m
+    mem_reservation: 1024m
+    cpus: "1.5"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc:  8192
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/server-status?auto >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  php:
+    build:
+      context: ./php
+      args:
+        PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
+        PHP_VERSION: "${PHP_VERSION}"
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    expose:
+      - "9000"
+    networks:
+      - backend
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/var/www/.ssh
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2
+    env_file: .env
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      REDIS_HOST: redis
+      PHP_VERSION: ${PHP_VERSION}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    mem_limit: 4096m
+    mem_reservation: 3072m
+    cpus: "2.5"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc:  8192
+    healthcheck:
+      test: ["CMD-SHELL", "php -v >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  db:
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    restart: always
+    networks:
+      - backend
+    volumes:
+      - db_data:/var/lib/mysql
+      # ensure your tuned my.cnf is applied inside the container
+      - ./db-config/my.cnf:/etc/mysql/conf.d/zz-pete.cnf:ro
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # also pass Pete vars so init.sh can read them if needed
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASS: ${PETE_DB_PASS}
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+    mem_limit: 8192m
+    mem_reservation: 6144m
+    cpus: "3.0"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+      nproc: 16384
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
+    networks:
+      - backend
+    volumes:
+      - redis_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
