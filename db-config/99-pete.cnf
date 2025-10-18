@@ -1,41 +1,29 @@
 [mysqld]
-# ─────────────────────────────────────────────────────────────────
-# Core sizing (container: 8G limit, 6G reservation, 3 vCPUs)
-# Target: ~6.25G steady DB usage + per-connection headroom
-# ─────────────────────────────────────────────────────────────────
-# ~75–80% of container cap → 6G buffer pool (adjustable via env if needed)
+# ─── Core sizing for 8G cgroup cap (reserve ~6G for InnoDB) ───
 innodb_buffer_pool_size = 6G
-innodb_buffer_pool_instances = 4         # 3 vCPUs → 3–4 instances is fine
 
-# Redo log: large enough to smooth write bursts, not so big to slow recovery
-innodb_log_file_size    = 1G             # total 2G with default 2 files
-innodb_log_files_in_group = 2
+# Redo logs & durability
+innodb_log_file_size    = 1G
 innodb_log_buffer_size  = 256M
-
-# Durability vs throughput
-# 1 = full ACID (safest), 2 = fsync once/sec (faster). Your previous file had 2.
-# If this DB holds orders/transactions, prefer 1 in prod.
 innodb_flush_log_at_trx_commit = 1
 
-# SSD-friendly I/O and flushing
+# SSD-friendly I/O
 innodb_flush_method      = O_DIRECT
 innodb_flush_neighbors   = 0
-innodb_io_capacity       = 2000          # typical SSD baseline
+innodb_io_capacity       = 2000
 innodb_io_capacity_max   = 4000
 
-# Threads (MariaDB 10.6)
+# Threads (supported in 10.6)
 innodb_read_io_threads   = 4
 innodb_write_io_threads  = 4
-innodb_page_cleaners     = 4
 
-# Connection and table cache
-max_connections          = 200           # avoid per-thread memory blowups
+# Connections / caches
+max_connections          = 200
 table_open_cache         = 4000
 table_definition_cache   = 2000
-open_files_limit         = 262144        # matches docker ulimit
+open_files_limit         = 262144
 
-# Per-thread buffers (be conservative: these allocate per connection as needed)
-# 200 conns × (sort + join + tmp) can snowball if you set these too high.
+# Per-connection buffers (keep conservative)
 max_allowed_packet       = 256M
 tmp_table_size           = 128M
 max_heap_table_size      = 128M
@@ -43,58 +31,29 @@ sort_buffer_size         = 4M
 join_buffer_size         = 4M
 read_buffer_size         = 2M
 read_rnd_buffer_size     = 4M
-
-# Optimizer / tmp tables
-internal_tmp_mem_storage_engine = TempTable
 tmpdir = /tmp
 
-# Adaptive Hash Index can help mixed workloads (default ON). Turn OFF if hot-spot contention.
-# innodb_adaptive_hash_index = ON
-
-# Startup warm-up / shutdown dump
+# Startup warmup
 innodb_buffer_pool_load_at_startup  = 1
 innodb_buffer_pool_dump_at_shutdown = 1
 
-# Binary logs: leave OFF unless you need PITR/replication; they add write I/O.
-# log_bin                  = mariadb-bin
-# binlog_expire_logs_seconds = 604800     # 7 days
-# sync_binlog             = 1
-
-# General performance/behavior
+# General
 character-set-server     = utf8mb4
 collation-server         = utf8mb4_unicode_ci
 skip-name-resolve
 sql_mode                 = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
-
-# Query cache deprecated/removed in modern MySQL; MariaDB still ships it but leave it OFF.
 query_cache_type         = 0
 query_cache_size         = 0
 
-# Aria (system tables / some tmp use it). Keep modest.
+# Aria (used by system/tmp in MariaDB)
 aria_pagecache_buffer_size = 256M
 aria_sort_buffer_size      = 128M
 
-# Performance Schema: useful for diagnostics; costs RAM. Keep ON but not huge.
 performance_schema = ON
 
-# Logging
-# slow_query_log           = 1
-# long_query_time          = 1
-# slow_query_log_file      = /var/lib/mysql/slow.log
-
-# SSL intentionally disabled per your environment
+# SSL disabled per your setup
 ssl=0
 skip_ssl
 
-# If you intend to use MariaDB's thread pool (community feature), enable:
-# plugin_load_add = thread_pool
-# thread_handling = pool-of-threads
-# thread_pool_size = 3                  # match vCPUs
-# thread_pool_stall_limit = 60
-
-[mariadb]
-# (alias section; not required but common)
-
 [client]
-# client-side SSL disabled to match your image setup
 ssl=0
