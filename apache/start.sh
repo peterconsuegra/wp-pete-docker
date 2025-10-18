@@ -20,64 +20,6 @@ chown -R www-data:www-data /var/cache/apache2
 chmod -R 750 /var/cache/apache2  
 chmod 750 /var/cache/apache2/mod_cache_disk/tmp
 
-echo '<VirtualHost _default_:80>
-    ServerName localhost
-    DocumentRoot /var/www/html/Pete/public
-
-    <Directory /var/www/html/Pete/public>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    # Long-running operations (site clone) can exceed 60s
-    Timeout 1800
-    ProxyTimeout 1800
-
-    LimitRequestBody 0
-
-    <Location "/wordpress-importer">
-        SecRuleEngine Off
-        SecRequestBodyAccess Off
-    </Location>
-
-    <Location "/wordpress-importer/upload-chunk">
-        SecRuleEngine Off
-        SecRequestBodyAccess Off
-    </Location>
-
-    # send PHP to FPM
-    <FilesMatch "\.php$">
-        SetHandler "proxy:fcgi://php:9000"
-    </FilesMatch>
-
-    # graceful-reload hook (now inside the vhost)
-    ScriptAlias /internal-reload /usr/local/bin/reload_apache.cgi
-    <Directory "/usr/local/bin">
-        Options +ExecCGI
-        Require local
-        Require ip 172.16.0.0/12
-    </Directory>
-
-    ScriptAlias /internal-certbot /usr/local/bin/issue_cert.cgi
-    <Directory "/usr/local/bin">
-        Options +ExecCGI
-        Require local
-        Require ip 172.16.0.0/12
-    </Directory>
-
-    ScriptAlias /modsecurity-status /usr/local/bin/modsecurity_status.cgi
-    <Directory "/usr/local/bin">
-        Options +ExecCGI
-        Require local
-        Require ip 172.16.0.0/12
-    </Directory>
-
-    LogLevel debug
-    ErrorLog  /var/www/html/wwwlog/Pete/error.log
-    CustomLog /var/www/html/wwwlog/Pete/access.log combined
-</VirtualHost>' > /opt/pete-apache/000-pete.conf
-
 
 # --- ADD THIS BLOCK ---------------------------------------------------
 # Lightweight logrotate scheduler (no cron needed)
