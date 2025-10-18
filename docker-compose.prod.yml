@@ -5,7 +5,6 @@ networks:
     driver: bridge
   backend:        # private east-west
     driver: bridge
-    internal: true
 
 volumes:
   wp_data:
