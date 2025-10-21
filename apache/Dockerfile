@@ -48,10 +48,9 @@ COPY status.conf /etc/apache2/mods-enabled/status.conf
 ARG PETE_ENVIRONMENT
 ARG SERVER
 RUN if [ "$PETE_ENVIRONMENT" = "production" ]; then \
-        cp ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf ; \
-        a2enconf performance ; \
-    fi
-
+  COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
+  RUN  a2enconf performance
+ 
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0
 RUN apt-get update && \
