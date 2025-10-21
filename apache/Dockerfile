@@ -53,9 +53,7 @@ ARG SERVER=16ram-4cpu
 COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
 
 # Only enable it in production
-RUN if [ "$PETE_ENVIRONMENT" = "production" ]; then \
-      a2enconf performance; \
-    fi
+RUN a2enconf performance
  
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0

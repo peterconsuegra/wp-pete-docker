@@ -61,18 +61,12 @@ RUN curl -sS https://getcomposer.org/installer | php && \
     curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
     chmod +x /usr/local/bin/wp
 
-# ────────────── 4. Set php.ini ─────────
-COPY php_dev.ini  /tmp/php_dev.ini
-COPY php_prod.ini /tmp/php_prod.ini
+# ────────────── 4. Set php.ini & www.conf ─────────
+ARG SERVER=16ram-4cpu
 
-RUN if [ "$PETE_ENVIRONMENT" = "development" ]; then \
-        cp /tmp/php_dev.ini  /usr/local/etc/php/php.ini ; \
-        echo "Using development INI"; \
-    else \
-        cp /tmp/php_prod.ini /usr/local/etc/php/php.ini ; \
-        echo "Using production INI"; \
-    fi && \
-    rm -f /tmp/php_dev.ini /tmp/php_prod.ini
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/php.ini /usr/local/etc/php/php.ini
+COPY ${SERVER}/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 # ────────────── 5. Pete configs & helper scripts ─────────
 COPY .gitconfig              /root/.gitconfig
