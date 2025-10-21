@@ -46,8 +46,10 @@ RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
 ARG SERVER
-COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
-RUN  a2enconf performance 
+RUN if [ "$PETE_ENVIRONMENT" = "production" ]; then \
+        cp ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf ; \
+        a2enconf performance ; \
+    fi
 
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0
@@ -56,9 +58,6 @@ RUN apt-get update && \
       libapache2-mod-security2 \
       curl \
       ca-certificates && \
-    \
-    # Prepare ModSecurity dirs
-    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
     \
     # Copy base config
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \

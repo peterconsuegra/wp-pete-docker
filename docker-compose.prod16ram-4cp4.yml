@@ -5,6 +5,7 @@ services:
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
         SERVER: 16ram-4cpu
+        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -17,7 +18,6 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
-      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
