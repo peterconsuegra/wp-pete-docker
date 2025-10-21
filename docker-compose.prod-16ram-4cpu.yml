@@ -87,10 +87,9 @@ services:
       nproc:  8192
   db:
     build:
-      context: .
+      context: ./db
       args:
         SERVER: 16ram-4cpu
-      dockerfile: db/Dockerfile
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
