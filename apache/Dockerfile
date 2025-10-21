@@ -46,7 +46,6 @@ RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
 #REFINE ACPACHE PERFORMANCE
-ARG PETE_ENVIRONMENT=production
 ARG SERVER=16ram-4cpu
 
 # Always copy the performance profile (must exist in build context under apache/${SERVER}/)
