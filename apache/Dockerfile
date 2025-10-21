@@ -45,6 +45,7 @@ RUN a2dismod mpm_prefork && \
 RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
+ARG PETE_ENVIRONMENT
 ARG SERVER
 RUN if [ "$PETE_ENVIRONMENT" = "production" ]; then \
         cp ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf ; \
