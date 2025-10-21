@@ -65,6 +65,9 @@ RUN apt-get update && \
       curl \
       ca-certificates && \
     \
+    # Prepare ModSecurity dirs
+    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
     # Copy base config
     cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
     \
