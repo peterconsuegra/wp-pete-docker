@@ -45,11 +45,17 @@ RUN a2dismod mpm_prefork && \
 RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
 COPY status.conf /etc/apache2/mods-enabled/status.conf
 
-ARG PETE_ENVIRONMENT
-ARG SERVER
+#REFINE ACPACHE PERFORMANCE
+ARG PETE_ENVIRONMENT=production
+ARG SERVER=16ram-4cpu
+
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
+
+# Only enable it in production
 RUN if [ "$PETE_ENVIRONMENT" = "production" ]; then \
-  COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
-  RUN  a2enconf performance
+      a2enconf performance; \
+    fi
  
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0
