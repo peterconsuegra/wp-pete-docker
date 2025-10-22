@@ -16,6 +16,24 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_DISABLE_XDEBUG_WARN=1
 
+
+ENV CACHETOOL_VERSION=9.1.0
+RUN set -eux; \
+    curl -fsSL -o /usr/local/bin/cachetool \
+      "https://gordalina.github.io/cachetool/downloads/cachetool.phar"; \
+    chmod +x /usr/local/bin/cachetool; \
+    # default to FPM TCP listener (change to socket if you use one)
+    printf "adapter: fastcgi\nfastcgi: \"127.0.0.1:9000\"\n" > /usr/local/etc/cachetool.yml; \
+    # tiny wrapper for one-liner refresh
+    printf '%s\n' \
+      '#!/usr/bin/env sh' \
+      'set -e' \
+      'CFG="${CACHETOOL_CONFIG:-/usr/local/etc/cachetool.yml}"' \
+      'exec /usr/local/bin/cachetool --config="$CFG" opcache:reset' \
+      > /usr/local/bin/opcache-refresh && chmod +x /usr/local/bin/opcache-refresh; \
+    # smoke test
+    cachetool --version
+
 # ────────────── 1. System & PHP extensions (WebP ready) ──────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
