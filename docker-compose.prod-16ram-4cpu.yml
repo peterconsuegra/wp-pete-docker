@@ -4,12 +4,8 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
-        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
-        APACHE_THREADS:       ${APACHE_THREADS}
-        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
-        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
-        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+        SERVER: 16ram-4cpu
+        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -22,7 +18,6 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
-      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
@@ -52,6 +47,7 @@ services:
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
+        SERVER: 16ram-4cpu
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -91,8 +87,9 @@ services:
       nproc:  8192
   db:
     build:
-      context: .
-      dockerfile: db/Dockerfile
+      context: ./db
+      args:
+        SERVER: 16ram-4cpu
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env

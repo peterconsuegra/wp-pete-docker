@@ -16,6 +16,24 @@ ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_DISABLE_XDEBUG_WARN=1
 
+
+ENV CACHETOOL_VERSION=9.1.0
+RUN set -eux; \
+    curl -fsSL -o /usr/local/bin/cachetool \
+      "https://gordalina.github.io/cachetool/downloads/cachetool.phar"; \
+    chmod +x /usr/local/bin/cachetool; \
+    # default to FPM TCP listener (change to socket if you use one)
+    printf "adapter: fastcgi\nfastcgi: \"127.0.0.1:9000\"\n" > /usr/local/etc/cachetool.yml; \
+    # tiny wrapper for one-liner refresh
+    printf '%s\n' \
+      '#!/usr/bin/env sh' \
+      'set -e' \
+      'CFG="${CACHETOOL_CONFIG:-/usr/local/etc/cachetool.yml}"' \
+      'exec /usr/local/bin/cachetool --config="$CFG" opcache:reset' \
+      > /usr/local/bin/opcache-refresh && chmod +x /usr/local/bin/opcache-refresh; \
+    # smoke test
+    cachetool --version
+
 # ────────────── 1. System & PHP extensions (WebP ready) ──────────────
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -61,21 +79,15 @@ RUN curl -sS https://getcomposer.org/installer | php && \
     curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
     chmod +x /usr/local/bin/wp
 
-# ────────────── 4. Set php.ini ─────────
-COPY php_dev.ini  /tmp/php_dev.ini
-COPY php_prod.ini /tmp/php_prod.ini
+# ────────────── 4. Set php.ini & www.conf ─────────
+ARG SERVER=16ram-4cpu
 
-RUN if [ "$PETE_ENVIRONMENT" = "development" ]; then \
-        cp /tmp/php_dev.ini  /usr/local/etc/php/php.ini ; \
-        echo "Using development INI"; \
-    else \
-        cp /tmp/php_prod.ini /usr/local/etc/php/php.ini ; \
-        echo "Using production INI"; \
-    fi && \
-    rm -f /tmp/php_dev.ini /tmp/php_prod.ini
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/php.ini /usr/local/etc/php/php.ini
+COPY ${SERVER}/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 # ────────────── 5. Pete configs & helper scripts ─────────
-COPY .gitconfig              /root/.gitconfig
+COPY git/.gitconfig              /root/.gitconfig
 COPY pete_install.sh /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh \
  && chown www-data:www-data /usr/local/bin/pete_install.sh \
@@ -89,7 +101,7 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
 
-COPY config.inc.php.custom /opt/pma-config/
+COPY phpmyadmin/config.inc.php.custom /opt/pma-config/
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 

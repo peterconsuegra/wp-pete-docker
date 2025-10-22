@@ -4,12 +4,7 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        APACHE_START_SERVERS: ${APACHE_START_SERVERS}
-        APACHE_SERVER_LIMIT:  ${APACHE_SERVER_LIMIT}
-        APACHE_THREADS:       ${APACHE_THREADS}
-        APACHE_MAX_WORKERS:   ${APACHE_MAX_WORKERS}
-        APACHE_SPARE_MIN:     ${APACHE_SPARE_MIN}
-        APACHE_SPARE_MAX:     ${APACHE_SPARE_MAX}
+        SERVER: development
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -44,6 +39,7 @@ services:
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
+        SERVER: development
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -75,8 +71,9 @@ services:
       PHP_VERSION: 8.2
   db:
     build:
-      context: .
-      dockerfile: db/Dockerfile
+      context: ./db
+      args:
+        SERVER: development
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env

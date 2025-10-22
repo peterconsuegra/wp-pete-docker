@@ -13,7 +13,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 1) Provide ModSecurity rotation policy
-COPY modsecurity.logrotate /etc/logrotate.d/modsecurity
+COPY modsecurity/modsecurity.logrotate /etc/logrotate.d/modsecurity
 
 # 2) Ensure logrotate state file exists (prevents duplicate rotations)
 RUN mkdir -p /var/lib/logrotate && \
@@ -43,31 +43,17 @@ RUN a2dismod mpm_prefork && \
     && a2enmod cgid 
 
 RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
-COPY status.conf /etc/apache2/mods-enabled/status.conf
+COPY conf/status.conf /etc/apache2/mods-enabled/status.conf
 
-COPY performance.tmpl /tmp/performance.tmpl
+#REFINE ACPACHE PERFORMANCE
+ARG SERVER=16ram-4cpu
 
-# ── declare build-args; give safe fall-backs so docker build . works ─
-ARG APACHE_START_SERVERS=2
-ARG APACHE_SERVER_LIMIT=4
-ARG APACHE_THREADS=64
-ARG APACHE_MAX_WORKERS=512
-ARG APACHE_SPARE_MIN=64
-ARG APACHE_SPARE_MAX=192
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
 
-# ── render template → final conf; enable it ─────────────────────────
-RUN mkdir -p /etc/apache2/conf-available && \
-    sed  -e "s/{{START_SERVERS}}/${APACHE_START_SERVERS}/" \
-         -e "s/{{SERVER_LIMIT}}/${APACHE_SERVER_LIMIT}/" \
-         -e "s/{{THREADS_PER_CHILD}}/${APACHE_THREADS}/" \
-         -e "s/{{MAX_REQUEST_WORKERS}}/${APACHE_MAX_WORKERS}/" \
-         -e "s/{{SPARE_MIN}}/${APACHE_SPARE_MIN}/" \
-         -e "s/{{SPARE_MAX}}/${APACHE_SPARE_MAX}/" \
-         /tmp/performance.tmpl \
-         > /etc/apache2/conf-available/performance.conf && \
-    rm /tmp/performance.tmpl && \
-    a2enconf performance  
-
+# Only enable it in production
+RUN a2enconf performance
+ 
 # ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
 ARG CRS_VERSION=4.15.0
 RUN apt-get update && \
@@ -97,8 +83,8 @@ RUN apt-get update && \
     ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
 
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
-COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
-COPY whitelist.conf /etc/modsecurity/whitelist.conf
+COPY modsecurity/modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY modsecurity/whitelist.conf /etc/modsecurity/whitelist.conf
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
 RUN a2enmod security2 \
@@ -120,28 +106,26 @@ RUN set -e \
 
 # 4) Reload-hook CGI
 ARG APACHE_RELOAD_SECRET
-COPY reload_apache.cgi /usr/local/bin/
+COPY cgi/reload_apache.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
  && chmod 755 /usr/local/bin/reload_apache.cgi
 
-COPY issue_cert.cgi /usr/local/bin/
+COPY cgi/issue_cert.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
     && chmod 755 /usr/local/bin/issue_cert.cgi
 
-COPY toggle_modsec.sh /usr/local/bin/
+COPY modsecurity/toggle_modsec.sh /usr/local/bin/
 RUN chmod 755  /usr/local/bin/toggle_modsec.sh \
     && chown root:root /usr/local/bin/toggle_modsec.sh
 
-COPY modsecurity_status.cgi /usr/local/bin/
+COPY modsecurity/modsecurity_status.cgi /usr/local/bin/
 RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/modsecurity_status.cgi \
     && chmod 755 /usr/local/bin/modsecurity_status.cgi
 
 
 # 5) Pete & phpMyAdmin base vhosts
-COPY pete.conf /etc/apache2/sites-available/000-pete.conf
-COPY phpmyadmin.conf   /etc/apache2/sites-available/
-COPY whitelist.conf    /etc/modsecurity/whitelist.conf
-COPY modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY conf/pete.conf /etc/apache2/sites-available/000-pete.conf
+COPY conf/phpmyadmin.conf   /etc/apache2/sites-available/
 
 # 6) Make vhost dirs shared & writable *before* volume is created
 RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled

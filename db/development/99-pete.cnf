@@ -1,0 +1,77 @@
+# =========================================================
+# MariaDB 10.6 (DEV) — Docker, 4GB RAM / 4 vCPU
+# Focus: snappy local dev for WordPress/WooCommerce
+# =========================================================
+[mysqld]
+# --- Networking / Docker niceties ---
+bind-address                 = 0.0.0.0
+skip-name-resolve
+max_connections              = 150
+wait_timeout                 = 180
+interactive_timeout          = 300
+
+# --- Character set / collation (WP recommended) ---
+character_set_server         = utf8mb4
+collation_server             = utf8mb4_unicode_ci
+
+# --- Packet & table handling ---
+max_allowed_packet           = 256M
+table_open_cache             = 2048
+
+# --- Temp tables (avoid on-disk temps in admin screens) ---
+tmp_table_size               = 128M
+max_heap_table_size          = 128M
+
+# --- InnoDB core sizing (keep room for PHP/Apache/OS) ---
+innodb_buffer_pool_size      = 1G          # safe for dev on a 4GB host
+innodb_buffer_pool_instances = 1
+innodb_log_file_size         = 256M
+innodb_log_buffer_size       = 64M
+
+# --- InnoDB I/O & flush (dev-friendly, fast) ---
+innodb_flush_method          = O_DIRECT
+innodb_flush_log_at_trx_commit = 2         # durability trade-off OK in dev
+sync_binlog                  = 0
+innodb_io_capacity           = 400
+innodb_io_capacity_max       = 800
+innodb_read_io_threads       = 4
+innodb_write_io_threads      = 4
+innodb_flush_neighbors       = 0
+
+# --- Misc engine knobs ---
+innodb_strict_mode           = 1
+explicit_defaults_for_timestamp = 1
+key_buffer_size              = 16M         # for rare MyISAM leftovers
+
+# --- Binary log (off in dev) ---
+skip-log-bin
+log_bin                      = 0
+
+# --- Query logging (useful in dev) ---
+slow_query_log               = ON
+long_query_time              = 1
+log_slow_admin_statements    = 1
+
+# --- SSL off (matches container client settings) ---
+ssl                          = 0
+skip_ssl
+
+# --- SQL mode (lenient enough for WP plugins) ---
+sql_mode                     = NO_ENGINE_SUBSTITUTION
+
+# --- Crash recovery dump/load (skip to speed container restarts) ---
+innodb_buffer_pool_dump_at_shutdown = 0
+innodb_buffer_pool_load_at_startup  = 0
+
+# --- Misc ---
+tmpdir                       = /tmp
+
+# =========================================================
+# Client tools
+# =========================================================
+[client]
+ssl                          = 0
+
+[mysqldump]
+max_allowed_packet           = 256M
+quick
