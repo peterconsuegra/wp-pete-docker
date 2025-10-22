@@ -15,7 +15,7 @@ PHP_VERSION=8.3
 
 ========================================
 
-**docker-compose.yml**
+**docker-compose.prod-16ram-4cpu.yml**
 ```
 services:
   apache:
@@ -23,7 +23,8 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        SERVER: development
+        SERVER: 16ram-4cpu
+        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -36,7 +37,6 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
-      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
@@ -52,13 +52,21 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
+    mem_limit: 1500m
+    mem_reservation: 1024m
+    cpus: "1.5"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc:  8192
   php:
     build:
       context: ./php
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
-        SERVER: development
+        SERVER: 16ram-4cpu
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -88,20 +96,42 @@ services:
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
       PHP_VERSION: 8.2
+    mem_limit: 4096m
+    mem_reservation: 3072m
+    cpus: "2.5"
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc:  8192
   db:
     build:
       context: ./db
       args:
-        SERVER: development
+        SERVER: 16ram-4cpu
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    mem_limit: 8192m
+    mem_reservation: 6144m
+    cpus: "3.0"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+      nproc: 16384
+      memlock:
+        soft: -1
+        hard: -1
 
   redis:
     image: redis:7-alpine
     restart: always
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: "0.5"
 
 volumes:
   wp_data:
@@ -801,128 +831,5 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 
 CMD ["/usr/local/bin/start.sh"]
 
-```
-
-========================================
-
-**apache/development/performance.conf**
-```
-#######################################################################
-# Apache performance (DEV) – 4GB RAM / 4 vCPU / PHP-FPM behind proxy_fcgi
-# Notes:
-# - PHP concurrency is ultimately capped by PHP-FPM (pm.max_children=24).
-# - Apache can serve many static requests concurrently; keep headroom.
-#######################################################################
-
-# --- Core timeouts (dev-friendly, avoid long hangs) ---
-Timeout             120
-CGIDScriptTimeout   120
-
-# Docker/overlayfs friendly: avoid sendfile/mmap issues
-EnableSendfile Off
-EnableMMAP     Off
-
-#######################################################################
-# 1) MPM-event – concurrency & keep-alive
-#######################################################################
-<IfModule mpm_event_module>
-    # With 4 vCPU, 2 children is plenty for dev; 4 gives static headroom.
-    ServerLimit            4
-    StartServers           2
-
-    # 64 threads/child is a good balance; 4 * 64 = 256 MaxRequestWorkers
-    ThreadsPerChild        64
-    MaxRequestWorkers      256
-
-    # Keep enough idle threads to absorb small bursts
-    MinSpareThreads        64
-    MaxSpareThreads        128
-
-    # Recycle to avoid memory creep during long dev sessions
-    MaxConnectionsPerChild 2000
-
-    # Keep-Alive: low timeout keeps threads free; enough requests per conn
-    KeepAlive On
-    KeepAliveTimeout 2
-    MaxKeepAliveRequests 200
-</IfModule>
-
-#######################################################################
-# 2) Core server tweaks
-#######################################################################
-ServerTokens Prod
-ServerSignature Off
-
-# Make ETags stable and simple in containers
-FileETag MTime Size
-
-#######################################################################
-# 3) HTTP/2
-#######################################################################
-Protocols h2 http/1.1
-# HTTP/2 Server Push is deprecated in browsers; keep it off.
-H2Push off
-
-#######################################################################
-# 4) Compression – gzip / deflate
-#######################################################################
-<IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE \
-        text/html text/plain text/css text/xml text/javascript \
-        application/javascript application/json image/svg+xml
-</IfModule>
-
-#######################################################################
-# 5) Disk Cache (opt-in by vhost; keep path consistent with container)
-#######################################################################
-<IfModule mod_cache_disk.c>
-    CacheRoot /var/cache/apache2/mod_cache_disk
-    # Optional dev-friendly limits (uncomment if you enable caching in vhost)
-    # CacheDirLength 2
-    # CacheDirLevels  1
-    # CacheMaxFileSize 10485760
-    # CacheQuickHandler off
-</IfModule>
-
-#######################################################################
-# 6) ModSecurity – skip rules on static files to save CPU
-#######################################################################
-<IfModule security2_module>
-  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js|woff2?)$">
-      SecRuleEngine Off
-  </LocationMatch>
-</IfModule>
-
-#######################################################################
-# 7) Proxy / FPM niceties (safe defaults; keep stricter in vhost if needed)
-#######################################################################
-<IfModule proxy_module>
-  ProxyRequests Off
-  ProxyBadHeader Ignore
-  ProxyTimeout 120
-</IfModule>
-
-# Recommended when proxying to php-fpm to avoid chunking edge cases in dev
-<IfModule proxy_http_module>
-  ProxyErrorOverride Off
-</IfModule>
-
-```
-
-========================================
-
-**db/development/99-pete.cnf**
-```
-[mysqld]
-innodb_buffer_pool_size = 1G
-innodb_log_file_size    = 256M
-innodb_flush_log_at_trx_commit = 2
-query_cache_type = 0
-skip-name-resolve
-ssl=0
-skip_ssl
-
-[client]
-ssl=0
 ```
 
