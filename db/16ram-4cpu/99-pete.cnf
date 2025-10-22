@@ -1,58 +1,73 @@
 [mysqld]
-# ─── Core sizing for 8G cgroup cap (reserve ~6G for InnoDB) ───
-innodb_buffer_pool_size = 6G
+# ─────────────────────────────────────────────────────────────────────────
+# Core sizing for ~8GiB cgroup cap (leave headroom for OS, page cache, tmp)
+# ─────────────────────────────────────────────────────────────────────────
+innodb_buffer_pool_size      = 6G
+innodb_buffer_pool_instances = 4         # ~1.5G per instance
+innodb_log_file_size         = 1G        # ×2 files by default → 2G total redo
+innodb_log_buffer_size       = 256M
+innodb_flush_log_at_trx_commit = 1       # strict durability for orders/payments
+innodb_flush_method          = O_DIRECT  # avoid double-buffering on SSD
+innodb_flush_neighbors       = 0
+innodb_io_capacity           = 2000
+innodb_io_capacity_max       = 4000
+innodb_page_cleaners         = 4
 
-# Redo logs & durability
-innodb_log_file_size    = 1G
-innodb_log_buffer_size  = 256M
-innodb_flush_log_at_trx_commit = 1
+# ── Threads (MariaDB 10.6) ─────────────────────────────────────────────
+innodb_read_io_threads       = 4
+innodb_write_io_threads      = 4
 
-# SSD-friendly I/O
-innodb_flush_method      = O_DIRECT
-innodb_flush_neighbors   = 0
-innodb_io_capacity       = 2000
-innodb_io_capacity_max   = 4000
+# ── Connections & per-connection memory (keep conservative) ────────────
+max_connections              = 200        # PHP-FPM ~24; leaves room for spikes
+max_allowed_packet           = 256M
+tmp_table_size               = 64M        # per-conn cap; avoid memory spikes
+max_heap_table_size          = 64M
+sort_buffer_size             = 4M
+join_buffer_size             = 4M
+read_buffer_size             = 2M
+read_rnd_buffer_size         = 4M
 
-# Threads (supported in 10.6)
-innodb_read_io_threads   = 4
-innodb_write_io_threads  = 4
+# ── Table cache & file limits (aligns with your container ulimits) ─────
+table_open_cache             = 4000
+table_definition_cache       = 2000
+open_files_limit             = 262144
 
-# Connections / caches
-max_connections          = 200
-table_open_cache         = 4000
-table_definition_cache   = 2000
-open_files_limit         = 262144
-
-# Per-connection buffers (keep conservative)
-max_allowed_packet       = 256M
-tmp_table_size           = 128M
-max_heap_table_size      = 128M
-sort_buffer_size         = 4M
-join_buffer_size         = 4M
-read_buffer_size         = 2M
-read_rnd_buffer_size     = 4M
-tmpdir = /tmp
-
-# Startup warmup
+# ── Startup warmup & persistence ───────────────────────────────────────
 innodb_buffer_pool_load_at_startup  = 1
 innodb_buffer_pool_dump_at_shutdown = 1
+innodb_buffer_pool_dump_pct         = 50
 
-# General
-character-set-server     = utf8mb4
-collation-server         = utf8mb4_unicode_ci
+# ── General engine defaults ────────────────────────────────────────────
+innodb_file_per_table        = 1
+innodb_adaptive_hash_index   = ON
+
+# ── Binary logging (disable if you are not replicating) ────────────────
+skip-log-bin
+# If you later enable binlog/replication, use:
+# binlog_format=ROW
+# sync_binlog=1
+
+# ── Character set & SQL modes ──────────────────────────────────────────
+character-set-server         = utf8mb4
+collation-server             = utf8mb4_unicode_ci
 skip-name-resolve
-sql_mode                 = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
-query_cache_type         = 0
-query_cache_size         = 0
+sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
 
-# Aria (used by system/tmp in MariaDB)
-aria_pagecache_buffer_size = 256M
-aria_sort_buffer_size      = 128M
+# ── Query cache (disabled on 10.6; keep explicit off) ──────────────────
+query_cache_type             = 0
+query_cache_size             = 0
 
-performance_schema = ON
+# ── Temp / misc ────────────────────────────────────────────────────────
+tmpdir                       = /tmp
+performance_schema           = ON
+innodb_print_all_deadlocks   = ON
 
-# SSL disabled per your setup
-ssl=0
+# ── Aria (used internally by MariaDB) ──────────────────────────────────
+aria_pagecache_buffer_size   = 256M
+aria_sort_buffer_size        = 128M
+
+# ── SSL disabled per your setup ────────────────────────────────────────
+ssl                          = 0
 skip_ssl
 
 [client]
