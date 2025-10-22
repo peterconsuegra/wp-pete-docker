@@ -87,7 +87,7 @@ COPY ${SERVER}/php.ini /usr/local/etc/php/php.ini
 COPY ${SERVER}/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 # ────────────── 5. Pete configs & helper scripts ─────────
-COPY .gitconfig              /root/.gitconfig
+COPY git/.gitconfig              /root/.gitconfig
 COPY pete_install.sh /usr/local/bin/pete_install.sh
 RUN chmod +x /usr/local/bin/pete_install.sh \
  && chown www-data:www-data /usr/local/bin/pete_install.sh \
@@ -101,7 +101,7 @@ RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
     chmod 440 /etc/sudoers.d/www-data && \
     chown -R www-data:www-data /var/www
 
-COPY config.inc.php.custom /opt/pma-config/
+COPY phpmyadmin/config.inc.php.custom /opt/pma-config/
 RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
         /opt/pma-config/config.inc.php.custom
 
