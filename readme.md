@@ -189,7 +189,7 @@ docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/ww
 
 Cloud Test
 docker cp /opt/wordpresspetepetelocalnet.tar.gz wordpress-pete-php-1:/var/www/html/
-docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
+docker exec -it wordpress-pete-php-1: -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
 
 Windows Test
 docker cp \Users\user\Sites\wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
