@@ -962,13 +962,16 @@ FileETag MTime Size
 # 3) HTTP/2 tuning (no server push)
 # WooCommerce → many concurrent small objects; keep stream cap reasonable.
 # ------------------------------
-Protocols h2 http/1.1
-ProtocolsHonorOrder On
+<IfModule http2_module>
+  Protocols h2 http/1.1
+  ProtocolsHonorOrder On
 
-# Stream/session controls: keep memory per session modest
-H2MaxSessionStreams 100
-H2StreamMaxMemSize 262144      # 256 KiB per stream cap
-H2WindowSize 6291456           # 6 MiB flow control window
+  # Stream/session controls: keep memory per session modest
+  H2MaxSessionStreams 100
+  # Maximum number of bytes buffered in memory for a stream (256 KiB)
+  H2StreamMaxMemSize 262144
+  H2WindowSize 6291456
+</IfModule>
 
 # ------------------------------
 # 4) Compression (gzip; brotli if available)

@@ -127,7 +127,7 @@ fi
 
 # 4) Post-install setup
 echo "#######################################"
-echo "Launching WordPress Pete..."
+echo "Launching Pete Panel..."
 echo "#######################################"
 
 # SSH key (for private repos, if needed)

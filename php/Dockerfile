@@ -33,6 +33,9 @@ RUN set -eux; \
       > /usr/local/bin/opcache-refresh && chmod +x /usr/local/bin/opcache-refresh; \
     # smoke test
     cachetool --version
+    
+RUN mkdir -p /var/log/php-fpm \
+ && chown -R www-data:www-data /var/log/php-fpm
 
 # ────────────── 1. System & PHP extensions (WebP ready) ──────────────
 RUN apt-get update && \
