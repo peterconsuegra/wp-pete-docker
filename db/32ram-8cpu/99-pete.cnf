@@ -1,0 +1,102 @@
+# =====================================================================
+# Pete Panel – MariaDB 10.6 production tuning for Docker
+# Host: Hetzner CCX33 (32 GB RAM / 8 vCPU)
+# DB container limit (compose): ~10 GiB RAM, ~2 vCPU quota
+# Workload: WooCommerce / WordPress OLTP
+# =====================================================================
+
+[mysqld]
+# ---------------------------------------------------------------------
+# 1) InnoDB core sizing – target ~65–70% of the container for buffer pool
+#    Keep headroom for connections, sorts/temp tables, code, and OS cache
+# ---------------------------------------------------------------------
+innodb_buffer_pool_size        = 7G             # ~70% of 10 GiB cgroup cap
+innodb_buffer_pool_instances   = 7              # ~1G per instance
+innodb_log_file_size           = 1G             # ×2 files → 2G total redo
+innodb_log_buffer_size         = 256M
+innodb_flush_log_at_trx_commit = 1              # strict durability (payments)
+innodb_flush_method            = O_DIRECT       # avoid double-buffering on SSD
+innodb_flush_neighbors         = 0
+innodb_io_capacity             = 2000
+innodb_io_capacity_max         = 4000
+innodb_page_cleaners           = 4
+
+# Threading (fits ~2 vCPU quota while keeping I/O parallelism)
+innodb_read_io_threads         = 4
+innodb_write_io_threads        = 4
+
+# ---------------------------------------------------------------------
+# 2) Connections & per-connection memory – conservative to avoid spikes
+# ---------------------------------------------------------------------
+max_connections                = 250            # plenty vs. PHP-FPM concurrency
+max_allowed_packet             = 256M
+tmp_table_size                 = 64M            # per-conn soft cap
+max_heap_table_size            = 64M            # per-conn hard cap
+sort_buffer_size               = 4M
+join_buffer_size               = 4M
+read_buffer_size               = 2M
+read_rnd_buffer_size           = 4M
+
+# ---------------------------------------------------------------------
+# 3) Table cache & open files (aligns with container ulimit 262144)
+# ---------------------------------------------------------------------
+table_open_cache               = 6000
+table_definition_cache         = 3000
+open_files_limit               = 262144
+skip-name-resolve
+
+# ---------------------------------------------------------------------
+# 4) Startup warmup & persistence
+# ---------------------------------------------------------------------
+innodb_buffer_pool_load_at_startup  = 1
+innodb_buffer_pool_dump_at_shutdown = 1
+innodb_buffer_pool_dump_pct         = 50
+
+# ---------------------------------------------------------------------
+# 5) Engine defaults helpful for WP/Woo
+# ---------------------------------------------------------------------
+innodb_file_per_table          = 1
+innodb_adaptive_hash_index     = ON
+innodb_print_all_deadlocks     = ON
+performance_schema             = ON
+
+# ---------------------------------------------------------------------
+# 6) Binary logging – OFF (enable only if you replicate or need PITR)
+# ---------------------------------------------------------------------
+skip-log-bin
+# If enabling later:
+# binlog_format=ROW
+# sync_binlog=1
+
+# ---------------------------------------------------------------------
+# 7) Character set & SQL mode
+# ---------------------------------------------------------------------
+character-set-server           = utf8mb4
+collation-server               = utf8mb4_unicode_ci
+sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+
+# ---------------------------------------------------------------------
+# 8) Query cache – must remain disabled (removed/obsolete)
+# ---------------------------------------------------------------------
+query_cache_type               = 0
+query_cache_size               = 0
+
+# ---------------------------------------------------------------------
+# 9) Temp / misc
+# ---------------------------------------------------------------------
+tmpdir                         = /tmp
+
+# ---------------------------------------------------------------------
+# 10) Aria (internal engine used by MariaDB)
+# ---------------------------------------------------------------------
+aria_pagecache_buffer_size     = 256M
+aria_sort_buffer_size          = 128M
+
+# ---------------------------------------------------------------------
+# 11) SSL disabled per your container setup (client/CLI opts too)
+# ---------------------------------------------------------------------
+ssl                            = 0
+skip_ssl
+
+[client]
+ssl=0
