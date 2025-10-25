@@ -23,7 +23,7 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        SERVER: 16ram-4cpu
+        SERVER: 32ram-8cpu
         PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
     restart: always
     volumes:
@@ -67,7 +67,7 @@ services:
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
-        SERVER: 16ram-4cpu
+        SERVER: 32ram-8cpu
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -110,7 +110,7 @@ services:
     build:
       context: ./db
       args:
-        SERVER: 16ram-4cpu
+        SERVER: 32ram-8cpu
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
