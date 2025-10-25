@@ -1,4 +1,4 @@
-**Context:** You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP user for a WordPress Woocomerce app
+**Context:** ou are an experienced DevOps developer with extensive knowledge in Docker. Below are the code files of a Docker LAMP user for Pete Panel web control panel and WordPress WooCommerce app installed on Ubuntu 24.04 LTS
 
 **.env**
 ```
