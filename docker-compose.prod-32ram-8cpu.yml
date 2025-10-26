@@ -109,32 +109,13 @@ services:
       memlock:
         soft: -1
         hard: -1
-
   redis:
     image: redis:7-alpine
     restart: always
-    command: [
-      "redis-server",
-      "--appendonly", "yes",          # AOF persistence
-      "--save", "900", "1",           # RDB snapshots: 1 key/15m
-      "--save", "300", "10",          # 10 keys/5m
-      "--save", "60", "10000",        # 10k keys/1m burst
-      "--maxmemory", "384mb",         # cap usage inside 512MB limit
-      "--maxmemory-policy", "allkeys-lru",
-      "--tcp-keepalive", "60",
-      "--hz", "10"
-    ]
     mem_limit: 1024m
     mem_reservation: 512m
     memswap_limit: 1024m
     cpus: "0.3"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 2s
-      retries: 5
 
 volumes:
   wp_data:
@@ -145,4 +126,3 @@ volumes:
   pma_data:
   ssl_data:
   apache_logs:
-  redis_data:
