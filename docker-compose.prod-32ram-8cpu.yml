@@ -112,8 +112,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    mem_limit: 1024m
-    mem_reservation: 512m
+    mem_limit: 512m
+    mem_reservation: 256m
     memswap_limit: 1024m
     cpus: "0.3"
 
