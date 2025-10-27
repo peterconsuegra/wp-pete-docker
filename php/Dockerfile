@@ -62,7 +62,7 @@ RUN apt-get update && \
         --with-jpeg \
         --with-webp && \
     docker-php-ext-install -j"$(nproc)" \
-        mysqli pdo pdo_mysql gd zip opcache && \
+        mysqli pdo pdo_mysql gd zip opcache intl mbstring && \
     \
     # ------- PECL extensions: Imagick (+WebP) & Redis ------- \
     pecl install imagick redis && \
