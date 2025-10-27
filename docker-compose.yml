@@ -33,6 +33,14 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
+    mem_limit: 384m
+    mem_reservation: 256m
+    memswap_limit: 768m
+    cpus: "0.7"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
   php:
     build:
       context: ./php
@@ -69,6 +77,14 @@ services:
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
       PHP_VERSION: 8.2
+    mem_limit: 1536m
+    mem_reservation: 1024m
+    memswap_limit: 2048m
+    cpus: "2.0"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
   db:
     build:
       context: ./db
@@ -79,6 +95,14 @@ services:
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    mem_limit: 1024m
+    mem_reservation: 768m
+    memswap_limit: 1536m
+    cpus: "1.0"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   redis:
     image: redis:7-alpine
@@ -87,6 +111,10 @@ services:
     mem_reservation: 128m
     memswap_limit: 512m
     cpus: "0.3"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
 volumes:
   wp_data:
