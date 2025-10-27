@@ -15,7 +15,7 @@ PHP_VERSION=8.3
 
 ========================================
 
-**docker-compose.prod-32ram-8cpu.yml**
+**docker-compose.yml**
 ```
 services:
   apache:
@@ -23,8 +23,7 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        SERVER: 32ram-8cpu
-        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+        SERVER: development
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -37,6 +36,7 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
@@ -52,22 +52,13 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
-    mem_limit: 2048m
-    mem_reservation: 1536m
-    memswap_limit: 2048m
-    cpus: "0.7"
-    ulimits:
-      nofile:
-        soft: 131072
-        hard: 131072
-      nproc:  8192
   php:
     build:
       context: ./php
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
-        SERVER: 32ram-8cpu
+        SERVER: development
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -97,43 +88,23 @@ services:
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
       PHP_VERSION: 8.2
-    mem_limit: 16384m
-    mem_reservation: 12288m
-    memswap_limit: 16384m
-    cpus: "5.0"
-    ulimits:
-      nofile:
-        soft: 131072
-        hard: 131072
-      nproc:  8192
   db:
     build:
       context: ./db
       args:
-        SERVER: 32ram-8cpu
+        SERVER: development
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    mem_limit: 10240m
-    mem_reservation: 8192m
-    memswap_limit: 10240m
-    cpus: "2.0"
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-      nproc: 16384
-      memlock:
-        soft: -1
-        hard: -1
+
   redis:
     image: redis:7-alpine
     restart: always
-    mem_limit: 1024m
-    mem_reservation: 512m
-    memswap_limit: 1024m
+    mem_limit: 256m
+    mem_reservation: 128m
+    memswap_limit: 512m
     cpus: "0.3"
 
 volumes:
@@ -286,153 +257,103 @@ ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 
 ========================================
 
-**php/32ram-8cpu/php.ini**
+**php/development/php.ini**
 ```
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Pete Panel – PHP 8.3 production profile
-; Hetzner CCX33 (32GB RAM / 8 vCPU), WordPress + WooCommerce
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-[PHP]
-; — Core limits —
-memory_limit = 768M                 ; bump to 1024M only if you truly need it
+; ===== Resources =====
+memory_limit = 512M              ; plugin requires ≥512M
 max_execution_time = 120
-max_input_time = 120
-max_input_vars = 5000
-post_max_size = 128M
-upload_max_filesize = 128M
-default_socket_timeout = 60
-output_buffering = 4096
-implicit_flush = Off
+max_input_time = 60
+max_input_vars = 6000            ; safer for Woo + big admin screens
+
+; uploads
+post_max_size = 64M
+upload_max_filesize = 64M
+
+; logging / visibility for dev
 expose_php = Off
-short_open_tag = Off
-zend.enable_gc = On
-
-; — Timezone —
-date.timezone = America/Bogota
-
-; — Errors (quiet prod) —
-error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
-display_errors = Off
-display_startup_errors = Off
+display_errors = Off             ; keep off, log instead
 log_errors = On
-; leave error_log unset here; pool-level error_log will be used
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+; optional: direct PHP error log to file inside container volume
+; error_log = /var/log/php/error.log
 
-; — Filesystem perf —
-realpath_cache_size = 4096K
-realpath_cache_ttl  = 600
-
-; — Opcache (critical for WP) —
+; ===== OPcache (DEV, fast reloads) =====
 opcache.enable = 1
-opcache.enable_cli = 0
-
-; JIT gives no benefit for typical WP workloads
+opcache.enable_cli = 1
+opcache.validate_timestamps = 1  ; dev: always check timestamps
+opcache.revalidate_freq = 1
+opcache.file_update_protection = 0
+opcache.memory_consumption = 192 ; plenty for WP + plugins in dev
+opcache.interned_strings_buffer = 16
+opcache.max_accelerated_files = 100000
+opcache.save_comments = 1
+; JIT usually doesn’t help WordPress; keep it off explicitly
 opcache.jit = 0
 opcache.jit_buffer_size = 0
 
-; Big sites = lots of files
-opcache.memory_consumption      = 512    ; MB
-opcache.interned_strings_buffer = 64     ; MB
-opcache.max_accelerated_files   = 131072
-opcache.max_wasted_percentage   = 5
+; ===== Filesystem resolver speed =====
+realpath_cache_size = 4096K
+realpath_cache_ttl  = 600
 
-opcache.use_cwd              = 1
-opcache.validate_timestamps  = 0         ; PROD: immutable code; reset on deploy
-opcache.revalidate_freq      = 0
-opcache.save_comments        = 1
-opcache.enable_file_override = 1
-opcache.fast_shutdown        = 1
-opcache.consistency_checks   = 0
-
-; — Sessions (WP rarely uses, but keep sane defaults) —
+; ===== Sessions / output =====
 session.gc_probability = 1
-session.gc_divisor     = 1000
-session.gc_maxlifetime = 2880
-session.use_strict_mode = 1
-session.cookie_httponly = 1
-session.cookie_secure = 1
-session.use_only_cookies = 1
+session.gc_divisor = 1000
+session.gc_maxlifetime = 28800
+output_buffering = 0
 
-; — Security —
-cgi.fix_pathinfo = 0
-; keep disable_functions empty; WP/CLI often needs proc_open et al.
-disable_functions =
-
-; — PDO/MySQL —
-mysql.allow_persistent = On
-mysqli.allow_persistent = On
-pdo_mysql.default_socket =
-request_order = "GP"
-variables_order = "GPCS"
+; ===== Sane defaults for CLI tools & HTTP timeouts =====
+default_socket_timeout = 30
+; If you use Redis ext frequently in scripts, you can keep this shorter:
+; redis.pconnect.pooling_enabled = 1
 
 ```
 
 ========================================
 
-**php/32ram-8cpu/www.conf**
+**php/development/www.conf**
 ```
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Pete Panel – PHP-FPM www pool (production)
-; CCX33: 32GB / 8 vCPU – php container limit 16GB, CPU quota 5 vCPU
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 [www]
+; --- identity ---
 user  = www-data
 group = www-data
 
-; Keep TCP (your cachetool.yml targets 127.0.0.1:9000)
+; --- listen (proxy via :9000 from Apache) ---
 listen = 0.0.0.0:9000
-listen.backlog = 1024
-listen.owner = www-data
-listen.group = www-data
-listen.mode  = 0660
+listen.backlog = 256
+listen.owner  = www-data
+listen.group  = www-data
+listen.mode   = 0660
 
-clear_env = no
-
-; =======================
-; Process Manager Tuning
-; =======================
+; --- process manager ---
 pm = dynamic
 
-; ~120 children ≈ 10–12GB at ~90–100MB/child (+opcache/shared)
-; If you later give PHP 12GB → 96–110; if 20GB → 140–160
-pm.max_children = 120
+; With 4GB host and dev workloads, assume ~80–100MB per PHP worker peak.
+; Reserve headroom for OS, OPcache, Composer, and bursts → cap to ~24 workers.
+pm.max_children = 24
+pm.start_servers = 6
+pm.min_spare_servers = 6
+pm.max_spare_servers = 12
 
-; warm pool for bursts
-pm.start_servers   = 16
-pm.min_spare_servers = 16
-pm.max_spare_servers = 32
-
-; recycle to avoid gradual RSS creep with heavy Woo hooks/imports
+; recycle to avoid slow leaks in dev
 pm.max_requests = 500
+pm.process_idle_timeout = 10s
 
-; timeouts / guards
-request_terminate_timeout = 120s
-request_slowlog_timeout   = 5s
-pm.process_idle_timeout   = 20s
+; --- status/health ---
+pm.status_path = /fpm-status
+ping.path      = /fpm-ping
 
-; logs (make sure directory exists in image/entrypoint)
-php_admin_flag[log_errors] = on
-php_admin_value[error_log] = /var/log/php-fpm/error.log
-slowlog = /var/log/php-fpm/slow.log
-catch_workers_output = yes
-access.format = "%R - %u %t \"%m %r%Q%q\" %s %f %{milli}dms %{kilo}Mkb"
+; --- timeouts that help avoid stuck requests in dev ---
+request_terminate_timeout = 180s
+request_slowlog_timeout   = 0
+; slowlog = /var/log/php-fpm/slowlog.log
 
-; align with docker ulimits
-rlimit_files = 131072
-; rlimit_core = 0
+; --- environment pass-through (optional) ---
+; env[APP_ENV] = $PETE_ENVIRONMENT
+; env[COMPOSER_HOME] = /tmp
 
-; per-pool PHP admin values
-php_admin_value[session.save_path] = /tmp
-php_admin_value[opcache.error_log] = /var/log/php-fpm/opcache.log
-
-; safety guard matching php.ini
-php_admin_value[post_max_size]     = 128M
-php_admin_value[upload_max_filesize] = 128M
-
-; helpful envs
-env[APP_ENV] = production
-env[PETE_ENVIRONMENT] = production
+; --- limits (keep defaults unless you hit open file limit issues) ---
+; rlimit_files = 4096
+; rlimit_core  = 0
 
 ```
 
@@ -891,288 +812,191 @@ CMD ["/usr/local/bin/start.sh"]
 
 ========================================
 
-**apache/32ram-8cpu/performance.conf**
+**apache/development/performance.conf**
 ```
 #######################################################################
-# Pete Panel – Apache performance (Event MPM) for CCX33 (32GB / 8 vCPU)
-# Deployment: Docker, Apache (event) proxying to PHP-FPM
-# Focus: WooCommerce/WordPress – many small H2 streams + dynamic PHP
+# Apache performance (DEV) – 4GB RAM / 4 vCPU / PHP-FPM behind proxy_fcgi
+# Notes:
+# - PHP concurrency is ultimately capped by PHP-FPM (pm.max_children=24).
+# - Apache can serve many static requests concurrently; keep headroom.
 #######################################################################
 
-# ------------------------------
-# 0) Safety/timeouts & I/O
-# ------------------------------
-Timeout 30
-RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
-# Avoid Docker volume/sendfile edge cases
+# --- Core timeouts (dev-friendly, avoid long hangs) ---
+Timeout             120
+CGIDScriptTimeout   120
+
+# Docker/overlayfs friendly: avoid sendfile/mmap issues
 EnableSendfile Off
 EnableMMAP     Off
 
-# ------------------------------
-# 1) MPM Event – connection/thread model
-# Keep Apache CPU light; PHP-FPM does the heavy lifting.
-# Default target: ~0.7 vCPU container quota (compose) with room to burst.
-# 8 children × 64 threads = 512 MaxRequestWorkers (cheap keep-alives/H2).
-# ------------------------------
+#######################################################################
+# 1) MPM-event – concurrency & keep-alive
+#######################################################################
 <IfModule mpm_event_module>
-  StartServers               4
+    # With 4 vCPU, 2 children is plenty for dev; 4 gives static headroom.
+    ServerLimit            4
+    StartServers           2
 
-  ServerLimit                8
-  ThreadsPerChild           64
-  MaxRequestWorkers        512
+    # 64 threads/child is a good balance; 4 * 64 = 256 MaxRequestWorkers
+    ThreadsPerChild        64
+    MaxRequestWorkers      256
 
-  MinSpareThreads           96
-  MaxSpareThreads          192
+    # Keep enough idle threads to absorb small bursts
+    MinSpareThreads        64
+    MaxSpareThreads        128
 
-  # Recycle workers to avoid memory growth under long-lived H2 sessions
-  MaxConnectionsPerChild 10000
+    # Recycle to avoid memory creep during long dev sessions
+    MaxConnectionsPerChild 2000
 
-  # KeepAlive: short but generous enough for H2 multiplexing
-  KeepAlive On
-  KeepAliveTimeout 2
-  MaxKeepAliveRequests 200
+    # Keep-Alive: low timeout keeps threads free; enough requests per conn
+    KeepAlive On
+    KeepAliveTimeout 2
+    MaxKeepAliveRequests 200
 </IfModule>
 
-# ------------------------------
-# 2) Core hardening & small wins
-# ------------------------------
+#######################################################################
+# 2) Core server tweaks
+#######################################################################
 ServerTokens Prod
 ServerSignature Off
-TraceEnable Off
+
+# Make ETags stable and simple in containers
 FileETag MTime Size
 
-# ------------------------------
-# 3) HTTP/2 tuning (no server push)
-# WooCommerce → many concurrent small objects; keep stream cap reasonable.
-# ------------------------------
-<IfModule http2_module>
-  Protocols h2 http/1.1
-  ProtocolsHonorOrder On
+#######################################################################
+# 3) HTTP/2
+#######################################################################
+Protocols h2 http/1.1
+# HTTP/2 Server Push is deprecated in browsers; keep it off.
+H2Push off
 
-  # Stream/session controls: keep memory per session modest
-  H2MaxSessionStreams 100
-  # Maximum number of bytes buffered in memory for a stream (256 KiB)
-  H2StreamMaxMemSize 262144
-  H2WindowSize 6291456
-</IfModule>
-
-# ------------------------------
-# 4) Compression (gzip; brotli if available)
-# Skip already-compressed types to save CPU.
-# ------------------------------
+#######################################################################
+# 4) Compression – gzip / deflate
+#######################################################################
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE \
-    text/html text/plain text/css text/xml text/javascript \
-    application/javascript application/json application/xml \
-    image/svg+xml
-  SetEnvIfNoCase Request_URI "\.(?:gif|jpe?g|png|webp|avif|ico|pdf|zip|gz|bz2|7z|mp4|mp3|woff2?)$" no-gzip
+    AddOutputFilterByType DEFLATE \
+        text/html text/plain text/css text/xml text/javascript \
+        application/javascript application/json image/svg+xml
 </IfModule>
 
-<IfModule brotli_module>
-  BrotliCompressionQuality 5
-  AddOutputFilterByType BROTLI_COMPRESS \
-    text/html text/plain text/css text/xml text/javascript \
-    application/javascript application/json application/xml \
-    image/svg+xml
-</IfModule>
-
-# ------------------------------
-# 5) Client-side caching for static assets
-# Long TTL on versioned assets; default sane cache otherwise.
-# ------------------------------
-<IfModule mod_expires.c>
-  ExpiresActive On
-  ExpiresByType text/css                       "access plus 1 year"
-  ExpiresByType application/javascript         "access plus 1 year"
-  ExpiresByType image/svg+xml                  "access plus 1 year"
-  ExpiresByType image/avif                     "access plus 1 year"
-  ExpiresByType image/webp                     "access plus 1 year"
-  ExpiresByType image/png                      "access plus 1 year"
-  ExpiresByType image/jpeg                     "access plus 1 year"
-  ExpiresByType image/gif                      "access plus 1 year"
-  ExpiresByType font/woff2                     "access plus 1 year"
-  ExpiresDefault                               "access plus 1 month"
-</IfModule>
-
-<IfModule mod_headers.c>
-  <FilesMatch "\.(?:css|js|svg|avif|webp|png|jpe?g|gif|woff2?)$">
-    Header unset ETag
-    Header set Cache-Control "public, max-age=31536000, immutable"
-  </FilesMatch>
-</IfModule>
-
-# ------------------------------
-# 6) Disk cache (conservative, static only)
-# Avoid dynamic endpoints (WC sessions, carts, checkouts, admin).
-# ------------------------------
-<IfModule mod_cache.c>
-  CacheQuickHandler On
-  CacheLock On
-  CacheLockPath /tmp/mod_cache-lock
-  CacheIgnoreHeaders Set-Cookie
-  CacheDefaultExpire 600
-  CacheMaxExpire 3600
-  CacheIgnoreNoLastMod On
-
-  <IfModule mod_cache_disk.c>
+#######################################################################
+# 5) Disk Cache (opt-in by vhost; keep path consistent with container)
+#######################################################################
+<IfModule mod_cache_disk.c>
     CacheRoot /var/cache/apache2/mod_cache_disk
-    CacheDirLength 2
-    CacheDirLevels 2
-
-    # Enable for generic paths; then disable dynamic
-    CacheEnable disk "/"
-
-    # Common Woo/WordPress dynamic endpoints to skip
-    CacheDisable "/wp-admin"
-    CacheDisable "/wp-login.php"
-    CacheDisable "/cart"
-    CacheDisable "/my-account"
-    CacheDisable "/checkout"
-    CacheDisable "/wc-api"
-    CacheDisable "/?add-to-cart="
-    # Don’t cache POSTs or requests with cookies (Woo sessions)
-    CacheDisableMatch "expr=%{REQUEST_METHOD} =~ m#POST#"
-  </IfModule>
+    # Optional dev-friendly limits (uncomment if you enable caching in vhost)
+    # CacheDirLength 2
+    # CacheDirLevels  1
+    # CacheMaxFileSize 10485760
+    # CacheQuickHandler off
 </IfModule>
 
-# ------------------------------
-# 7) ModSecurity – skip static to save CPU
-# ------------------------------
+#######################################################################
+# 6) ModSecurity – skip rules on static files to save CPU
+#######################################################################
 <IfModule security2_module>
-  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|avif|webp|css|js|woff2?)$">
-    SecRuleEngine Off
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js|woff2?)$">
+      SecRuleEngine Off
   </LocationMatch>
 </IfModule>
 
-# ------------------------------
-# 8) Cheap DoS safety valves
-# ------------------------------
-<IfModule mod_reqtimeout.c>
-  RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+#######################################################################
+# 7) Proxy / FPM niceties (safe defaults; keep stricter in vhost if needed)
+#######################################################################
+<IfModule proxy_module>
+  ProxyRequests Off
+  ProxyBadHeader Ignore
+  ProxyTimeout 120
 </IfModule>
 
-<IfModule mod_ratelimit.c>
-  # Example throttle for very large downloads (disabled by default)
-  # <LocationMatch "\.(?:zip|tar|gz|bz2|7z|mp4)$">
-  #   SetOutputFilter RATE_LIMIT
-  #   SetEnv rate-limit 512
-  # </LocationMatch>
+# Recommended when proxying to php-fpm to avoid chunking edge cases in dev
+<IfModule proxy_http_module>
+  ProxyErrorOverride Off
 </IfModule>
-
-# ------------------------------
-# 9) Logging (keep lean in production)
-# ------------------------------
-LogLevel warn
-# Consider rotating frequently via logrotate (already configured in image)
 
 ```
 
 ========================================
 
-**db/32ram-8cpu/99-pete.cnf**
+**db/development/99-pete.cnf**
 ```
-# =====================================================================
-# Pete Panel – MariaDB 10.6 production tuning for Docker
-# Host: Hetzner CCX33 (32 GB RAM / 8 vCPU)
-# DB container limit (compose): ~10 GiB RAM, ~2 vCPU quota
-# Workload: WooCommerce / WordPress OLTP
-# =====================================================================
-
+# =========================================================
+# MariaDB 10.6 (DEV) — Docker, 4GB RAM / 4 vCPU
+# Focus: snappy local dev for WordPress/WooCommerce
+# =========================================================
 [mysqld]
-# ---------------------------------------------------------------------
-# 1) InnoDB core sizing – target ~65–70% of the container for buffer pool
-#    Keep headroom for connections, sorts/temp tables, code, and OS cache
-# ---------------------------------------------------------------------
-innodb_buffer_pool_size        = 7G             # ~70% of 10 GiB cgroup cap
-innodb_buffer_pool_instances   = 7              # ~1G per instance
-innodb_log_file_size           = 1G             # ×2 files → 2G total redo
-innodb_log_buffer_size         = 256M
-innodb_flush_log_at_trx_commit = 1              # strict durability (payments)
-innodb_flush_method            = O_DIRECT       # avoid double-buffering on SSD
-innodb_flush_neighbors         = 0
-innodb_io_capacity             = 2000
-innodb_io_capacity_max         = 4000
-innodb_page_cleaners           = 4
-
-# Threading (fits ~2 vCPU quota while keeping I/O parallelism)
-innodb_read_io_threads         = 4
-innodb_write_io_threads        = 4
-
-# ---------------------------------------------------------------------
-# 2) Connections & per-connection memory – conservative to avoid spikes
-# ---------------------------------------------------------------------
-max_connections                = 250            # plenty vs. PHP-FPM concurrency
-max_allowed_packet             = 256M
-tmp_table_size                 = 64M            # per-conn soft cap
-max_heap_table_size            = 64M            # per-conn hard cap
-sort_buffer_size               = 4M
-join_buffer_size               = 4M
-read_buffer_size               = 2M
-read_rnd_buffer_size           = 4M
-
-# ---------------------------------------------------------------------
-# 3) Table cache & open files (aligns with container ulimit 262144)
-# ---------------------------------------------------------------------
-table_open_cache               = 6000
-table_definition_cache         = 3000
-open_files_limit               = 262144
+# --- Networking / Docker niceties ---
+bind-address                 = 0.0.0.0
 skip-name-resolve
+max_connections              = 150
+wait_timeout                 = 180
+interactive_timeout          = 300
 
-# ---------------------------------------------------------------------
-# 4) Startup warmup & persistence
-# ---------------------------------------------------------------------
-innodb_buffer_pool_load_at_startup  = 1
-innodb_buffer_pool_dump_at_shutdown = 1
-innodb_buffer_pool_dump_pct         = 50
+# --- Character set / collation (WP recommended) ---
+character_set_server         = utf8mb4
+collation_server             = utf8mb4_unicode_ci
 
-# ---------------------------------------------------------------------
-# 5) Engine defaults helpful for WP/Woo
-# ---------------------------------------------------------------------
-innodb_file_per_table          = 1
-innodb_adaptive_hash_index     = ON
-innodb_print_all_deadlocks     = ON
-performance_schema             = ON
+# --- Packet & table handling ---
+max_allowed_packet           = 256M
+table_open_cache             = 2048
 
-# ---------------------------------------------------------------------
-# 6) Binary logging – OFF (enable only if you replicate or need PITR)
-# ---------------------------------------------------------------------
+# --- Temp tables (avoid on-disk temps in admin screens) ---
+tmp_table_size               = 128M
+max_heap_table_size          = 128M
+
+# --- InnoDB core sizing (keep room for PHP/Apache/OS) ---
+innodb_buffer_pool_size      = 1G          # safe for dev on a 4GB host
+innodb_buffer_pool_instances = 1
+innodb_log_file_size         = 256M
+innodb_log_buffer_size       = 64M
+
+# --- InnoDB I/O & flush (dev-friendly, fast) ---
+innodb_flush_method          = O_DIRECT
+innodb_flush_log_at_trx_commit = 2         # durability trade-off OK in dev
+sync_binlog                  = 0
+innodb_io_capacity           = 400
+innodb_io_capacity_max       = 800
+innodb_read_io_threads       = 4
+innodb_write_io_threads      = 4
+innodb_flush_neighbors       = 0
+
+# --- Misc engine knobs ---
+innodb_strict_mode           = 1
+explicit_defaults_for_timestamp = 1
+key_buffer_size              = 16M         # for rare MyISAM leftovers
+
+# --- Binary log (off in dev) ---
 skip-log-bin
-# If enabling later:
-# binlog_format=ROW
-# sync_binlog=1
+log_bin                      = 0
 
-# ---------------------------------------------------------------------
-# 7) Character set & SQL mode
-# ---------------------------------------------------------------------
-character-set-server           = utf8mb4
-collation-server               = utf8mb4_unicode_ci
-sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+# --- Query logging (useful in dev) ---
+slow_query_log               = ON
+long_query_time              = 1
+log_slow_admin_statements    = 1
 
-# ---------------------------------------------------------------------
-# 8) Query cache – must remain disabled (removed/obsolete)
-# ---------------------------------------------------------------------
-query_cache_type               = 0
-query_cache_size               = 0
-
-# ---------------------------------------------------------------------
-# 9) Temp / misc
-# ---------------------------------------------------------------------
-tmpdir                         = /tmp
-
-# ---------------------------------------------------------------------
-# 10) Aria (internal engine used by MariaDB)
-# ---------------------------------------------------------------------
-aria_pagecache_buffer_size     = 256M
-aria_sort_buffer_size          = 128M
-
-# ---------------------------------------------------------------------
-# 11) SSL disabled per your container setup (client/CLI opts too)
-# ---------------------------------------------------------------------
-ssl                            = 0
+# --- SSL off (matches container client settings) ---
+ssl                          = 0
 skip_ssl
 
+# --- SQL mode (lenient enough for WP plugins) ---
+sql_mode                     = NO_ENGINE_SUBSTITUTION
+
+# --- Crash recovery dump/load (skip to speed container restarts) ---
+innodb_buffer_pool_dump_at_shutdown = 0
+innodb_buffer_pool_load_at_startup  = 0
+
+# --- Misc ---
+tmpdir                       = /tmp
+
+# =========================================================
+# Client tools
+# =========================================================
 [client]
-ssl=0
+ssl                          = 0
+
+[mysqldump]
+max_allowed_packet           = 256M
+quick
 
 ```
 
