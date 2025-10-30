@@ -15,7 +15,7 @@ PHP_VERSION=8.3
 
 ========================================
 
-**docker-compose.yml**
+**docker-compose.prod-16ram-4cpu.yml**
 ```
 services:
   apache:
@@ -23,7 +23,8 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        SERVER: development
+        SERVER: 16ram-4cpu
+        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -36,7 +37,6 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
-      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
@@ -52,21 +52,21 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
-    mem_limit: 384m
-    mem_reservation: 256m
-    memswap_limit: 768m
-    cpus: "0.7"
+    mem_limit: 1500m
+    mem_reservation: 1024m
+    cpus: "1.5"
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 131072
+        hard: 131072
+      nproc:  8192
   php:
     build:
       context: ./php
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
-        SERVER: development
+        SERVER: 16ram-4cpu
     restart: always
     depends_on:                # ← php waits for apache, db, redis
       - apache
@@ -96,44 +96,42 @@ services:
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
       PHP_VERSION: 8.2
-    mem_limit: 1536m
-    mem_reservation: 1024m
-    memswap_limit: 2048m
-    cpus: "2.0"
+    mem_limit: 4096m
+    mem_reservation: 3072m
+    cpus: "2.5"
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 131072
+        hard: 131072
+      nproc:  8192
   db:
     build:
       context: ./db
       args:
-        SERVER: development
+        SERVER: 16ram-4cpu
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    mem_limit: 1024m
-    mem_reservation: 768m
-    memswap_limit: 1536m
-    cpus: "1.0"
+    mem_limit: 8192m
+    mem_reservation: 6144m
+    cpus: "3.0"
     ulimits:
       nofile:
-        soft: 65536
-        hard: 65536
-
+        soft: 262144
+        hard: 262144
+      nproc: 16384
+      memlock:
+        soft: -1
+        hard: -1
   redis:
     image: redis:7-alpine
     restart: always
-    mem_limit: 256m
-    mem_reservation: 128m
-    memswap_limit: 512m
-    cpus: "0.3"
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
+    mem_limit: 512m
+    mem_reservation: 256m
+    memswap_limit: 1024m
+    cpus: "0.5"
 
 volumes:
   wp_data:
@@ -281,6 +279,399 @@ EXPOSE 9000
 
 # Delegates to Pete’s installer, which eventually execs php-fpm
 ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
+```
+
+========================================
+
+**php/16ram-4cpu/php.ini**
+```
+; ======================= Pete — PHP (Production) =======================
+; Host: Hetzner CCX23 (16 GB / 4 vCPU)
+; Container: php (mem_limit ~4096M)
+; ======================================================================
+
+; ----- Resources -----
+memory_limit = 512M              ; required by your plugin (min 512M)
+max_execution_time = 120         ; keep tight; long jobs via CLI/cron
+max_input_time = 60
+max_input_vars = 6000            ; safer for Woo + big admin screens
+
+; uploads (tune if your store needs bigger assets)
+post_max_size = 64M
+upload_max_filesize = 64M
+
+; ----- Visibility / Logging -----
+expose_php = Off
+display_errors = Off
+log_errors = On
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+; Optional: place PHP log on a mounted volume
+; error_log = /var/log/php/error.log
+
+; ======================= OPcache (Production) ==========================
+; WordPress/Woo benefits from a warm, stable cache. No timestamp checks.
+opcache.enable = 1
+opcache.enable_cli = 0           ; keep CLI clean; enable only if needed
+opcache.validate_timestamps = 0  ; PROD: disable stat() checks
+opcache.revalidate_freq = 0
+opcache.file_update_protection = 2
+
+; Size: fits large WP/Woo installs + builders, within your 4GB PHP limit
+opcache.memory_consumption = 256
+opcache.interned_strings_buffer = 32
+opcache.max_accelerated_files = 200000
+opcache.save_comments = 1
+
+; JIT rarely helps WP; keep off
+opcache.jit = 0
+opcache.jit_buffer_size = 0
+
+; ================= Filesystem resolver speed ===========================
+realpath_cache_size = 8192K
+realpath_cache_ttl  = 1800
+
+; ================= Sessions / output ==================================
+session.gc_probability = 1
+session.gc_divisor = 1000
+session.gc_maxlifetime = 28800
+output_buffering = 0
+
+; ================= Sane defaults for timeouts ==========================
+default_socket_timeout = 30
+
+```
+
+========================================
+
+**php/16ram-4cpu/www.conf**
+```
+[www]
+; --- identity ---
+user  = www-data
+group = www-data
+
+; --- listen (Apache proxy via :9000) ---
+listen = 0.0.0.0:9000
+listen.backlog = 256
+listen.owner  = www-data
+listen.group  = www-data
+listen.mode   = 0660
+
+; ================= Process Manager =================
+; With ~4GB for php-fpm and WP/Woo typical peak ~80–120MB per worker,
+; cap to ~28–32 workers for headroom (OPcache, CLI bursts, composer, etc.)
+pm = dynamic
+pm.max_children = 30            ; sweet spot for your 4GB php container
+pm.start_servers = 8
+pm.min_spare_servers = 8
+pm.max_spare_servers = 16
+
+; recycle to avoid leaks in long-lived pools
+pm.max_requests = 1500
+
+; --- timeouts / stability ---
+; Allow slow Woo admin ops and heavy AJAX during peaks without runaway procs.
+request_terminate_timeout = 180s
+request_slowlog_timeout   = 0
+; slowlog = /var/log/php-fpm/slowlog.log
+
+; --- status/health (keep for metrics) ---
+pm.status_path = /fpm-status
+ping.path      = /fpm-ping
+
+; --- env pass-through (optional) ---
+; env[APP_ENV] = production
+
+; --- file/resource limits (leave defaults unless you hit limits) ---
+; rlimit_files = 8192
+; rlimit_core  = 0
+
+; --- harden logging at pool level (optional) ---
+; php_admin_value[error_log] = /var/log/php/error.log
+; php_admin_flag[log_errors] = on
+
+```
+
+========================================
+
+**php/pete_install.sh**
+```bash
+#!/bin/bash
+set -e
+
+# 1) Wait for MySQL to be ready
+echo "Waiting for MySQL..."
+until mysqladmin --skip-ssl ping -h db --silent; do
+  sleep 3
+done
+
+chown -R www-data:www-data /var/www/html /etc/apache2/sites-* 2>/dev/null || true
+
+# 3) Full Pete install (only once)
+if [ ! -f /var/www/html/.installed ]; then
+  echo "#######################################"
+  echo "Starting Pete Panel installation..."
+  echo "#######################################"
+
+  mkdir -p /var/www/html/wwwlog/Pete
+  chown -R www-data:www-data /var/www/html/wwwlog
+  rm -rf /var/www/html/Pete
+  cd /var/www/html
+
+  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  cd Pete
+
+  git fetch --tags
+  latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+  git checkout $latestTag
+
+  # Reset composer & env
+  rm -f auth.json composer.json
+  cp composer_original.json composer.json
+  cp .env.example .env
+
+  cat <<EOF >> .env
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=${PETE_DB_NAME}
+DB_USERNAME=${PETE_DB_USER}
+DB_PASSWORD=${PETE_DB_PASSWORD}
+PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
+APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
+APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
+APACHE_CERTBOT_URL=${APACHE_CERTBOT_URL}
+PETE_DASHBOARD_URL=https://dashboard.deploypete.com
+PETE_DEMO=inactive
+PETE_ENVIRONMENT=production
+PETE_DEBUG=inactive
+EOF
+
+  # Install PHP deps & migrate
+  rm -rf vendor
+
+  mysql --protocol=TCP -h db -uroot -p"${PETE_ROOT_PASSWORD}" <<SQL
+CREATE DATABASE IF NOT EXISTS \`${PETE_DB_NAME}\`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS '${PETE_DB_USER}'@'%' IDENTIFIED BY '${PETE_DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON \`${PETE_DB_NAME}\`.* TO '${PETE_DB_USER}'@'%';
+FLUSH PRIVILEGES;
+
+USE \`${PETE_DB_NAME}\`;
+CREATE TABLE IF NOT EXISTS \`options\` (
+  \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  \`option_name\` VARCHAR(191) NOT NULL UNIQUE,
+  \`title\` VARCHAR(191) NULL,
+  \`category\` VARCHAR(191) NULL,
+  \`visible\` VARCHAR(191) NULL,
+  \`option_value\` LONGTEXT NULL,
+  \`option_date\` DATETIME NULL,
+  \`version\` VARCHAR(50) NULL,
+  \`created_at\` TIMESTAMP NULL,
+  \`updated_at\` TIMESTAMP NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL
+
+
+  # 1) install vendor WITHOUT running composer scripts (avoids package:discover early)
+  COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev --no-scripts
+
+  # ensure DB + placeholder 'options' table exist before any artisan command
+
+
+  # 2) app key first (so Laravel can boot)
+  php artisan key:generate
+
+  # 3) create tables BEFORE discovery; use --force in case APP_ENV=production
+  php artisan migrate --force
+
+  # 4) now it’s safe to run discovery (and any other composer scripts)
+  php artisan package:discover --ansi
+  # (optional but recommended)
+  php artisan config:cache
+  php artisan route:cache
+
+  # Add general options
+  php artisan addoption --option_name=os --option_value=docker
+  php artisan addoption --option_name=server_status --option_value=off
+  php artisan addoption --option_name=parent_version --option_value=13
+  php artisan addoption --option_name=version --option_value="$latestTag"
+  php artisan addoption --option_name=app_root --option_value=/var/www/html
+  php artisan addoption --option_name=server_conf --option_value=/etc/apache2/sites-available
+  php artisan addoption --option_name=server --option_value=apache
+  php artisan addoption --option_name=server_version --option_value=24
+  php artisan addoption --option_name=os_version --option_value=bionic
+  php artisan addoption --option_name=os_distribution --option_value=ubuntu
+  php artisan addoption --option_name=logs_route --option_value=/var/www/html/wwwlog
+  php artisan addoption --option_name=os_stack --option_value=apache_mpm_prefork
+  php artisan addoption --option_name=phpmyadmin_status --option_value=off
+
+  # Create needed dirs & perms
+  mkdir -p public/uploads public/export trash storage storage/logs
+  touch storage/logs/laravel.log
+  mkdir -p /var/www/html/wwwlog/Pete /var/www/html/wwwlog/example1
+  composer dump-autoload --ignore-platform-reqs
+
+  # Mark as installed
+  chown -R www-data:www-data /var/www/html/Pete 
+  echo "done" > /var/www/html/.installed
+  echo "#######################################"
+  echo "WordPress Pete installation completed"
+  echo "#######################################"
+
+fi
+
+# 4) Post-install setup
+echo "#######################################"
+echo "Launching Pete Panel..."
+echo "#######################################"
+
+# SSH key (for private repos, if needed)
+SSH_USER="www-data"
+SSH_HOME="$(getent passwd ${SSH_USER} | cut -d: -f6 || echo /var/www)"
+SSH_DIR="${SSH_HOME}/.ssh"
+
+# Create ~/.ssh with correct perms/owner
+install -d -m 700 -o "${SSH_USER}" -g "${SSH_USER}" "${SSH_DIR}"
+
+# Prefer ed25519; fall back to rsa if needed. Only generate if none exists.
+if [ ! -f "${SSH_DIR}/id_ed25519.pub" ] && [ ! -f "${SSH_DIR}/id_rsa.pub" ]; then
+  # Try ed25519 first
+  if sudo -u "${SSH_USER}" ssh-keygen -t ed25519 -N "" \
+        -C "www-data@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${SSH_DIR}/id_ed25519" >/dev/null 2>&1; then
+    :
+  else
+    # ed25519 might be unavailable on very old images; use rsa as fallback
+    sudo -u "${SSH_USER}" ssh-keygen -t rsa -b 4096 -N "" \
+        -C "www-data@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${SSH_DIR}/id_rsa" >/dev/null 2>&1
+  fi
+fi
+
+# Preload known_hosts to avoid interactive prompts on first git fetch/clone
+# (add the hosts you use—Bitbucket/GitHub shown here)
+for host in github.com bitbucket.org; do
+  if ! sudo -u "${SSH_USER}" sh -lc "ssh-keygen -F ${host} >/dev/null"; then
+    ssh-keyscan -T 5 "${host}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+  fi
+done
+
+# Tighten permissions (SSH is strict)
+chmod 700 "${SSH_DIR}"
+chmod 600 "${SSH_DIR}"/id_* 2>/dev/null || true
+chmod 644 "${SSH_DIR}"/id_*.pub "${SSH_DIR}/known_hosts" 2>/dev/null || true
+chown -R "${SSH_USER}:${SSH_USER}" "${SSH_DIR}"
+
+
+###############################################################################
+# Root user SSH key (useful for admin/one-off git or sftp tasks)
+###############################################################################
+ROOT_SSH_DIR="/root/.ssh"
+install -d -m 700 "${ROOT_SSH_DIR}"
+
+# Generate a key only if none exist yet (prefer ed25519; fallback to rsa)
+if [ ! -f "${ROOT_SSH_DIR}/id_ed25519.pub" ] && [ ! -f "${ROOT_SSH_DIR}/id_rsa.pub" ]; then
+  if ssh-keygen -t ed25519 -N "" \
+        -C "root@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${ROOT_SSH_DIR}/id_ed25519" >/dev/null 2>&1; then
+    :
+  else
+    ssh-keygen -t rsa -b 4096 -N "" \
+        -C "root@$(hostname -f 2>/dev/null || hostname)" \
+        -f "${ROOT_SSH_DIR}/id_rsa" >/dev/null 2>&1
+  fi
+fi
+
+# Preload known_hosts (avoids prompts on first clone/fetch)
+for host in github.com bitbucket.org; do
+  if ! ssh-keygen -F "${host}" >/dev/null 2>&1; then
+    ssh-keyscan -T 5 "${host}" >> "${ROOT_SSH_DIR}/known_hosts" 2>/dev/null || true
+  fi
+done
+
+# Strict permissions for SSH
+chmod 700 "${ROOT_SSH_DIR}"
+chmod 600 "${ROOT_SSH_DIR}"/id_* 2>/dev/null || true
+chmod 644 "${ROOT_SSH_DIR}"/id_*.pub "${ROOT_SSH_DIR}/known_hosts" 2>/dev/null || true
+
+echo "Root SSH public key(s):"
+ls -1 "${ROOT_SSH_DIR}"/id_*.pub 2>/dev/null || true
+###############################################################################
+
+#domain_template for development
+pete_environment=${PETE_ENVIRONMENT}
+if [ "$pete_environment" = "development" ]; then
+  cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
+  echo "cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active"
+  cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active
+  cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=off
+else
+  cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
+  php artisan addoption --option_name=security_status --option_value=on
+fi
+
+###############################################################################
+# phpMyAdmin bootstrap (runs only once per empty pma_data volume)
+###############################################################################
+PMA_DIR="/usr/src/phpmyadmin"                      # shared volume mount-point
+PMA_CFG_TMPL="/opt/pma-config/config.inc.php.custom"
+PMA_CFG_DEST="${PMA_DIR}/config.inc.php"
+PMA_VERSION="5.2.2"
+
+if [ ! -f "${PMA_DIR}/index.php" ]; then
+    echo "→ Installing phpMyAdmin ${PMA_VERSION} into ${PMA_DIR} …"
+    curl -fsSL \
+      "https://files.phpmyadmin.net/phpMyAdmin/${PMA_VERSION}/phpMyAdmin-${PMA_VERSION}-all-languages.tar.gz" \
+      -o /tmp/pma.tar.gz
+    mkdir -p "${PMA_DIR}"
+    tar -xzf /tmp/pma.tar.gz --strip-components=1 -C "${PMA_DIR}"
+    rm /tmp/pma.tar.gz
+fi
+
+# ---------------------------------------------------------------------------
+# Copy / template the main config only if it does not exist yet
+# ---------------------------------------------------------------------------
+if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
+    echo "→ Creating phpMyAdmin config …"
+
+    # Use the secret from .env, or generate one on the fly
+    BF_SECRET=${BLOWFISH_SECRET:-$(head -c32 /dev/urandom | base64)}
+
+    # Copy template → destination, substituting the placeholder
+    sed "s#__BLOWFISH__#${BF_SECRET}#" "${PMA_CFG_TMPL}" > "${PMA_CFG_DEST}"
+    chown www-data:www-data "${PMA_CFG_DEST}"
+fi
+###############################################################################
+
+
+# 5) Finally delegate to the official Apache entrypoint
+exec php-fpm 
+
+```
+
+========================================
+
+**db/Dockerfile**
+```
+FROM mariadb:10.6
+
+# your existing init stuff
+COPY init.sh /docker-entrypoint-initdb.d/init.sh
+RUN apt-get update && apt-get install -y --no-install-recommends dos2unix \
+ && find /docker-entrypoint-initdb.d -type f -name "*.sh" -exec dos2unix {} \; \
+ && chmod +x /docker-entrypoint-initdb.d/*.sh \
+ && rm -rf /var/lib/apt/lists/*
+
+#REFINE ACPACHE PERFORMANCE
+ARG SERVER=16ram-4cpu
+
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/99-pete.cnf /etc/mysql/conf.d/99-pete.cnf
+RUN chmod 0644 /etc/mysql/conf.d/99-pete.cnf
 ```
 
 ========================================
@@ -456,283 +847,159 @@ CMD ["/usr/local/bin/start.sh"]
 
 ========================================
 
-**apache/modsecurity/whitelist.conf**
+**apache/16ram-4cpu/performance.conf**
 ```
-# =====================================================================
-# Pete Panel – ModSecurity whitelist (surgical false-positive fixes)
-# NOTE: Keep comments OUTSIDE quoted action lists. No backslashes inside quotes.
-# =====================================================================
+#######################################################################
+# 0) Global safety timeouts (prod)
+#######################################################################
+Timeout 30
+RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
 
-# -----------------------------
-# Baseline FP removals (global)
-# -----------------------------
+# Files on Docker volumes can misbehave with sendfile/MMAP → avoid bugs.
+EnableSendfile Off
+EnableMMAP     Off
 
-SecRule REQUEST_URI "@rx ^/wp-json/" \
-  "id:1100198,phase:1,pass,nolog,\
-   chain"
-  SecRule REQUEST_HEADERS_NAMES "@contains x-http-method-override" \
-    "t:none,ctl:ruleRemoveById=920450"
+#######################################################################
+# 1) MPM Event — tuned for Docker limits (1.5 CPU / ~1.5 GB for Apache)
+#    Goal: enough threads to serve H2 keep-alives/static without
+#    overwhelming PHP-FPM (pm.max_children ≈ 24)
+#######################################################################
+<IfModule mpm_event_module>
+    StartServers              2
 
-# b) index.php?rest_route=... form (percent-encoded route like %2Fwp%2Fv2%2F...)
-SecRule REQUEST_BASENAME "@streq index.php" \
-  "id:1100199,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" \
-    "t:none,chain"
-  SecRule REQUEST_HEADERS_NAMES "@contains x-http-method-override" \
-    "t:none,ctl:ruleRemoveById=920450"
+    # 4 children × 64 threads = 256 MaxRequestWorkers
+    # (Plenty for H2 concurrency; PHP-FPM still caps dynamic to ~24)
+    ServerLimit               4
+    ThreadsPerChild          64
+    MaxRequestWorkers       256
 
-SecAction \
-  "id:10000,phase:1,pass,nolog,\
-   ctl:ruleRemoveById=953100,\
-   ctl:ruleRemoveById=959100,\
-   ctl:ruleRemoveById=980170"
+    MinSpareThreads          64
+    MaxSpareThreads         128
 
-# -----------------------------
-# Pete internal paths (engine off)
-# -----------------------------
-SecRule REQUEST_URI "@beginsWith /wp-admin" \
-  "id:1000001,phase:1,pass,nolog,ctl:ruleEngine=Off"
+    MaxConnectionsPerChild 10000
 
-SecRule REQUEST_URI "@beginsWith /admin/phpinfo" \
-  "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+    KeepAlive On
+    KeepAliveTimeout 2
+    MaxKeepAliveRequests 200
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /admin/phpinfo/view" \
-  "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 2) Core server hardening & small wins
+#######################################################################
+ServerTokens Prod
+ServerSignature Off
+TraceEnable Off
+FileETag MTime Size
 
-SecRule REQUEST_URI "@beginsWith /validate-pete" \
-  "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 3) HTTP/2 tuning (server push is deprecated → keep it off)
+#######################################################################
+Protocols h2 http/1.1
+ProtocolsHonorOrder On
+# Reasonable defaults for Woo + many small assets
+H2MaxSessionStreams 100
+H2StreamMaxMemSize 262144
+H2WindowSize 6291456
 
-SecRule REQUEST_URI "@beginsWith /pete_plugins_install" \
-  "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 4) Compression (gzip; Brotli if module is present)
+#######################################################################
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE \
+    text/html text/plain text/css text/xml text/javascript \
+    application/javascript application/json application/xml \
+    image/svg+xml
+  # Don’t waste CPU compressing already-compressed types
+  SetEnvIfNoCase Request_URI "\.(?:gif|jpe?g|png|webp|avif|ico|pdf|zip|gz|bz2|7z|mp4|mp3|woff2?)$" no-gzip
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /pete_update" \
-  "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
+<IfModule brotli_module>
+  BrotliCompressionQuality 5
+  AddOutputFilterByType BROTLI_COMPRESS \
+    text/html text/plain text/css text/xml text/javascript \
+    application/javascript application/json application/xml \
+    image/svg+xml
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /update_post" \
-  "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 5) Far-future caching for static assets (client-side cache)
+#######################################################################
+<IfModule mod_expires.c>
+  ExpiresActive On
+  # cache static forever (rev via querystring or file name hashing)
+  ExpiresByType text/css                   "access plus 1 year"
+  ExpiresByType application/javascript     "access plus 1 year"
+  ExpiresByType image/svg+xml              "access plus 1 year"
+  ExpiresByType image/avif                 "access plus 1 year"
+  ExpiresByType image/webp                 "access plus 1 year"
+  ExpiresByType image/png                  "access plus 1 year"
+  ExpiresByType image/jpeg                 "access plus 1 year"
+  ExpiresByType image/gif                  "access plus 1 year"
+  ExpiresByType font/woff2                 "access plus 1 year"
+  ExpiresDefault                           "access plus 1 month"
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /phpmyadmin" \
-  "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+<IfModule mod_headers.c>
+  <FilesMatch "\.(?:css|js|svg|avif|webp|png|jpe?g|gif|woff2?)$">
+    Header unset ETag
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /phpmyinfo" \
-  "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 6) Disk cache (optional, safe rules) — avoid dynamic Woo endpoints
+#     Apache container has limited RAM/CPU; keep this modest.
+#######################################################################
+<IfModule mod_cache.c>
+  CacheQuickHandler On
+  CacheLock On
+  CacheLockPath /tmp/mod_cache-lock
+  CacheIgnoreHeaders Set-Cookie
+  CacheDefaultExpire 600
+  CacheMaxExpire 3600
+  CacheIgnoreNoLastMod On
 
-SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
-  "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
+  <IfModule mod_cache_disk.c>
+    CacheRoot /var/cache/apache2/mod_cache_disk
+    CacheDirLength 2
+    CacheDirLevels 2
+    # Enable only for static asset types (by URL suffix)
+    CacheEnable disk "/"
+    CacheDisable "/wp-admin"
+    CacheDisable "/wp-login.php"
+    CacheDisable "/cart"
+    CacheDisable "/my-account"
+    CacheDisable "/checkout"
+    CacheDisable "/wc-api"
+    CacheDisable "/?add-to-cart="
+    # Don’t cache POSTs or cookied pages (Woo sessions)
+    CacheDisableMatch "expr=%{REQUEST_METHOD} =~ m#POST#"
+  </IfModule>
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /internal-certbot" \
-  "id:1000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 7) ModSecurity — skip rules for static to save CPU
+#######################################################################
+<IfModule security2_module>
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|avif|webp|css|js|woff2?)$">
+    SecRuleEngine Off
+  </LocationMatch>
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /internal-reload" \
-  "id:1000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+#######################################################################
+# 8) Small DoS safety valves (cheap protections)
+#######################################################################
+<IfModule mod_reqtimeout.c>
+  RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+</IfModule>
 
-SecRule REQUEST_URI "@beginsWith /pete_plugins" \
-  "id:10000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /oupdates" \
-  "id:10000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp_plugins" \
-  "id:10000013,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /pete_installers" \
-  "id:10000014,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp_global_options" \
-  "id:10000015,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /validate_site_json" \
-  "id:10000016,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp-json/pete/v1" \
-  "id:10000017,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /plugins" \
-  "id:10000018,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Pete dashboard rule (example specific)
-SecRule REQUEST_URI "@beginsWith /wordpress-importer" \
-  "id:910004,phase:1,pass,nolog,ctl:ruleRemoveById=200004"
-
-# -----------------------------
-# WooCommerce allow-list
-# -----------------------------
-
-# Engine off for Woo AJAX endpoints (?wc-ajax=...)
-SecRule QUERY_STRING "@contains wc-ajax=" \
-  "id:1000100,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Engine off for admin-ajax.php (some WC add-ons)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
-  "id:1000101,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Engine off for legacy wc-api callbacks
-SecRule QUERY_STRING "@contains wc-api=" \
-  "id:1000102,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Surgical relaxations for specific wc-ajax actions
-SecRule QUERY_STRING "@rx \bwc-ajax=(update_order_review|checkout|apply_coupon|get_cart_totals)\b" \
-  "id:1000110,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=930120,ctl:ruleRemoveById=942430"
-
-# Surgical relaxations for wc-api payloads
-SecRule QUERY_STRING "@rx \bwc-api=\w+" \
-  "id:1000111,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160"
-
-# Allow methods beyond defaults
-SecAction \
- "id:1000112,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
-
-# -----------------------------
-# Core WordPress relaxations
-# -----------------------------
-
-# Admin AJAX – keep engine ON but remove noisy CRS rules
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
-  "id:1100100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=942430"
-
-# Heartbeat (quieter editing)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1100101,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@streq heartbeat" "t:none,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@rx ^/wp-json/" \
-  "id:1100200,phase:1,pass,nolog,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
-   ctl:ruleRemoveById=920450"
-
-SecRule REQUEST_URI "@rx ^/index\.php$" "id:1100201,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" "t:none,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
-   ctl:ruleRemoveById=920450"
-
-# REST writes – relax only content-like fields
-SecRule REQUEST_URI "@rx ^/(wp-json/|index\.php$)" "id:1100202,phase:2,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=941160;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content,ctl:ruleRemoveTargetById=942110;ARGS:content,ctl:ruleRemoveTargetById=941100;ARGS:excerpt,ctl:ruleRemoveTargetById=942100;ARGS:excerpt,ctl:ruleRemoveTargetById=941100;ARGS:blocks,ctl:ruleRemoveTargetById=942100;ARGS:blocks"
-
-# Media Library uploads
-SecRule REQUEST_URI "@endsWith /wp-admin/async-upload.php" \
-  "id:1100300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=930120"
-# ^ file path access relaxation included
-
-# Search (?s=) – avoid SQLi FPs on natural queries
-SecRule &ARGS:s "@ge 1" \
-  "id:1100400,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:s,ctl:ruleRemoveTargetById=942110;ARGS:s,ctl:ruleRemoveTargetById=942430;ARGS:s"
-
-# Preview & Customizer – long/b64 content
-SecRule REQUEST_URI "@endsWith /wp-admin/post.php" "id:1100500,phase:1,pass,nolog,chain"
-  SecRule ARGS:preview "@streq true" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/customize.php" \
-  "id:1100501,phase:1,pass,nolog,ctl:ruleRemoveTargetById=941100;ARGS,ctl:ruleRemoveTargetById=942100;ARGS"
-
-# Optional: wp-cron (usually internal)
-SecRule REQUEST_URI "@endsWith /wp-cron.php" \
-  "id:1100600,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# -----------------------------
-# Popular plugins/builders
-# -----------------------------
-
-# WooCommerce extras (surgical, REST/admin-ajax variants handled above)
-SecRule REQUEST_URI "@contains /wc-api/" \
-  "id:1200100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
-
-# Contact Form 7 (admin-ajax)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200200,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@rx ^wpcf7|contact\-form\-7" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
-
-# Elementor (REST + admin-ajax)
-SecRule REQUEST_URI "@rx ^/wp-json/elementor/v1/" \
-  "id:1200300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200301,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@rx ^elementor_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Divi Builder (admin-ajax)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200400,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@contains et_fb_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Yoast SEO (REST)
-SecRule REQUEST_URI "@rx ^/wp-json/yoast/v1/" \
-  "id:1200500,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Query Monitor (REST + admin-ajax)
-SecRule REQUEST_URI "@rx ^/wp-json/qm/" \
-  "id:1200600,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200601,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@streq query-monitor" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-
-# Gutenberg Templates / Template Parts saves (JSON) – relax noisy rules only on content-like fields
-# Also relax REQUEST_BODY to cover large block JSON that still trips 9322xx/9411xx.
-
-# Native /wp-json/... form
-SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/(templates|template-parts)(/|$)" \
-  "id:1100210,phase:2,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
-     ctl:ruleRemoveTargetById=941100;ARGS:content,\
-     ctl:ruleRemoveTargetById=941160;ARGS:content,\
-     ctl:ruleRemoveTargetById=941180;ARGS:content,\
-     ctl:ruleRemoveTargetById=941140;ARGS:content,\
-     ctl:ruleRemoveTargetById=942100;ARGS:content,\
-     ctl:ruleRemoveTargetById=942110;ARGS:content,\
-     ctl:ruleRemoveTargetById=932230;ARGS:content,\
-     ctl:ruleRemoveTargetById=932235;ARGS:content,\
-     ctl:ruleRemoveTargetById=932250;ARGS:content,\
-     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-     ctl:ruleRemoveTargetById=941100;ARGS:source,\
-     ctl:ruleRemoveTargetById=941160;ARGS:source,\
-     ctl:ruleRemoveTargetById=942100;ARGS:source,\
-     ctl:ruleRemoveTargetById=942110;ARGS:source,\
-     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
-
-# index.php?rest_route=/wp/v2/... form
-SecRule REQUEST_URI "@streq /index.php" \
-  "id:1100211,phase:2,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2F(templates|template\-parts)(%2F|&|$)" "t:none,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
-     ctl:ruleRemoveTargetById=941100;ARGS:content,\
-     ctl:ruleRemoveTargetById=941160;ARGS:content,\
-     ctl:ruleRemoveTargetById=941180;ARGS:content,\
-     ctl:ruleRemoveTargetById=941140;ARGS:content,\
-     ctl:ruleRemoveTargetById=942100;ARGS:content,\
-     ctl:ruleRemoveTargetById=942110;ARGS:content,\
-     ctl:ruleRemoveTargetById=932230;ARGS:content,\
-     ctl:ruleRemoveTargetById=932235;ARGS:content,\
-     ctl:ruleRemoveTargetById=932250;ARGS:content,\
-     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-     ctl:ruleRemoveTargetById=941100;ARGS:source,\
-     ctl:ruleRemoveTargetById=941160;ARGS:source,\
-     ctl:ruleRemoveTargetById=942100;ARGS:source,\
-     ctl:ruleRemoveTargetById=942110;ARGS:source,\
-     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
-
-# =====================================================================
-# End of whitelist
-# =====================================================================
+<IfModule mod_ratelimit.c>
+  # Example (disabled by default). Uncomment to throttle huge downloads:
+  # <LocationMatch "\.(?:zip|tar|gz|bz2|7z|mp4)$">
+  #   SetOutputFilter RATE_LIMIT
+  #   SetEnv rate-limit 512
+  # </LocationMatch>
+</IfModule>
 
 ```
 
