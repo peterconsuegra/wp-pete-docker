@@ -41,7 +41,7 @@ RUN mkdir -p /var/log/php-fpm \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         # base utilities
-        default-mysql-client vim sudo git unzip zip curl ca-certificates \
+        default-mysql-client vim sudo git unzip zip curl ca-certificates cron\
         # PHP image libs
         libfreetype6-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
         libzip-dev libonig-dev libxml2-dev \
@@ -70,6 +70,8 @@ RUN apt-get update && \
     \
     # clean image
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN /bin/sh -lc 'touch /var/log/cron.log && chmod 0644 /var/log/cron.log'
 
 # ────────────── 2. Node.js & npm ──────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \

@@ -250,5 +250,30 @@ fi
 ###############################################################################
 
 
+###############################################################################
+# Laravel Scheduler via cron (runs every minute)
+###############################################################################
+# Create /etc/cron.d entry (preferred for Docker images)
+CRON_FILE="/etc/cron.d/laravel-scheduler"
+if [ ! -f "$CRON_FILE" ]; then
+  cat > "$CRON_FILE" <<'EOF'
+SHELL=/bin/bash
+# Keep PATH explicit so php/composer are resolved
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Run as www-data to match file permissions and cache ownership
+* * * * * www-data cd /var/www/html/Pete && php artisan schedule:run >> /var/log/cron.log 2>&1
+EOF
+  chmod 0644 "$CRON_FILE"
+fi
+
+# Make sure cron is running (Debian's daemon is 'cron')
+# If already running, this is a no-op.
+if ! pgrep -x cron >/dev/null 2>&1; then
+  echo "Starting cron daemon…"
+  cron
+fi
+
+echo "Cron set. Tail with: docker compose exec php tail -f /var/log/cron.log"
+
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 
