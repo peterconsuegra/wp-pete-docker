@@ -1,0 +1,190 @@
+# =========================
+# Core security & env files
+# =========================
+.env
+!.env.example
+!.env.sample
+!Pete/.env.example
+
+# SSH keys & sensitive auth
+**/id_rsa
+**/id_rsa.pub
+**/id_ed25519
+**/id_ed25519.pub
+**/known_hosts
+**/authorized_keys
+**/.ssh/
+
+# Certificates / private keys
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+*.der
+*.csr
+letsencrypt/
+certs/
+ssl/
+secrets/
+*.kdb
+*.srl
+
+# =========================
+# Logs / runtime artifacts
+# =========================
+*.log
+logs/
+log/
+**/storage/*.log
+**/storage/logs/
+wwwlog/
+var/log/
+tmp/
+temp/
+*.pid
+*.seed
+*.pid.lock
+
+# ModSecurity / Apache runtime logs (mounted in container)
+apache/modsec_audit/
+**/modsec_audit.log
+**/apache2/*.log
+**/apache2/*_log
+
+# =========================
+# Backups / dumps / exports
+# =========================
+*.sql
+*.sql.gz
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+backups/
+dump/
+dumps/
+export/
+exports/
+Pete/backups/
+Pete/storage/app/backups/
+
+# =========================
+# Docker / Compose extras
+# =========================
+docker-compose.override.yml
+.docker/
+docker-data/
+docker/volumes/
+# Named volumes if they ever materialize as folders locally
+wp_data/
+db_data/
+ssh_data/
+apache_sites_available/
+apache_sites_enabled/
+pma_data/
+ssl_data/
+apache_logs/
+
+# =========================
+# Node / front-end artifacts
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.pnp.*
+.bazel-cache/
+dist/
+build/
+.cache/
+
+# Lockfiles — keep if you want reproducible builds; ignore otherwise
+# (Uncomment to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# =========================
+# Composer / PHP artifacts
+# =========================
+vendor/
+composer.phar
+.phpunit.result.cache
+.php-cs-fixer.cache
+
+# Lockfile — keep for apps; ignore for libraries
+# (For Pete apps, we usually KEEP it)
+# composer.lock
+
+# =========================
+# IDE / OS clutter
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+*.swp
+*.swo
+*.swn
+*.s WP
+*.idea/*
+.idea/
+.vscode/*
+.vscode/
+*.iml
+
+# =========================
+# WordPress specifics (if any local copies appear)
+# =========================
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/advanced-cache.php
+wp-content/object-cache.php
+wp-config.php
+.wp-env.json
+wp-cli.local.yml
+
+# =========================
+# phpMyAdmin (mounted/bootstrapped)
+# =========================
+phpmyadmin/
+**/phpmyadmin/tmp/
+**/phpmyadmin/config.inc.php
+
+# =========================
+# Pete Panel workspace (safety)
+# =========================
+Pete/.env
+Pete/.env.*
+Pete/storage/
+Pete/bootstrap/cache/
+Pete/vendor/
+Pete/public/uploads/
+Pete/public/export/
+Pete/trash/
+
+# =========================
+# Misc archives / artifacts
+# =========================
+*.iso
+*.ova
+*.ovf
+*.bin
+*.img
+*.dmg
+*.exe
+*.msi
+*.deb
+*.apk
+*.aac
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mp3
+*.wav
+*.flac
