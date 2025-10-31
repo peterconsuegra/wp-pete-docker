@@ -371,7 +371,7 @@ pm.max_requests = 1500
 
 ; --- timeouts / stability ---
 ; Allow slow Woo admin ops and heavy AJAX during peaks without runaway procs.
-request_terminate_timeout = 180s
+request_terminate_timeout = 0
 request_slowlog_timeout   = 0
 ; slowlog = /var/log/php-fpm/slowlog.log
 
@@ -691,6 +691,20 @@ RUN apt-get update && \
       certbot python3-certbot-apache \
       sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libapache2-mod-xsendfile \
+  && a2enmod xsendfile
+
+RUN printf '%s\n' \
+  'XSendFile On' \
+  'XSendFilePath /var/www/html' \
+  'XSendFilePath /var/www/html/Pete' \
+  'XSendFilePath /var/www/html/Pete/backups' \
+  'XSendFilePath /var/www/html/Pete/storage' \
+  'XSendFilePath /var/www/html/Pete/storage/app' \
+  > /etc/apache2/conf-available/xsendfile.conf \
+  && a2enconf xsendfile
 
 # 1) Provide ModSecurity rotation policy
 COPY modsecurity/modsecurity.logrotate /etc/logrotate.d/modsecurity
