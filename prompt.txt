@@ -191,7 +191,7 @@ RUN mkdir -p /var/log/php-fpm \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         # base utilities
-        default-mysql-client vim sudo git unzip zip curl ca-certificates \
+        default-mysql-client vim sudo git unzip zip curl ca-certificates cron\
         # PHP image libs
         libfreetype6-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
         libzip-dev libonig-dev libxml2-dev \
@@ -220,6 +220,8 @@ RUN apt-get update && \
     \
     # clean image
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN /bin/sh -lc 'touch /var/log/cron.log && chmod 0644 /var/log/cron.log'
 
 # ────────────── 2. Node.js & npm ──────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
@@ -647,6 +649,31 @@ if [ ! -f "${PMA_CFG_DEST}" ] && [ -f "${PMA_CFG_TMPL}" ]; then
 fi
 ###############################################################################
 
+
+###############################################################################
+# Laravel Scheduler via cron (runs every minute)
+###############################################################################
+# Create /etc/cron.d entry (preferred for Docker images)
+CRON_FILE="/etc/cron.d/laravel-scheduler"
+if [ ! -f "$CRON_FILE" ]; then
+  cat > "$CRON_FILE" <<'EOF'
+SHELL=/bin/bash
+# Keep PATH explicit so php/composer are resolved
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Run as www-data to match file permissions and cache ownership
+* * * * * www-data cd /var/www/html/Pete && php artisan schedule:run >> /var/log/cron.log 2>&1
+EOF
+  chmod 0644 "$CRON_FILE"
+fi
+
+# Make sure cron is running (Debian's daemon is 'cron')
+# If already running, this is a no-op.
+if ! pgrep -x cron >/dev/null 2>&1; then
+  echo "Starting cron daemon…"
+  cron
+fi
+
+echo "Cron set. Tail with: docker compose exec php tail -f /var/log/cron.log"
 
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 
