@@ -1,12 +1,12 @@
 [Unit]
-Description=WordPress Pete - Docker Compose stack
+Description=Pete Panel - Docker Compose stack
 After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 # Absolute path to the folder that holds docker-compose.yml
-WorkingDirectory=/opt/wordpress-pete
+WorkingDirectory=/opt/pete-panel
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down
 RemainAfterExit=yes
