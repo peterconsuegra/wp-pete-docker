@@ -1,0 +1,1040 @@
+**Context:** You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP Pete Panel for WordPress Woocommerce, and Laravel sites
+
+**docker-compose.yml**
+```
+services:
+  apache:
+    build:
+      context: ./apache
+      args:
+        APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+        SERVER: development
+    restart: always
+    volumes:
+      - wp_data:/var/www/html           
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin:ro
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2 
+    environment:
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
+      LOGROTATE_INTERVAL: 43200 
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      default:
+        aliases:
+          - demo3.petelocal.net
+          - demo3.wordpresspete.org
+          - wordpresspete.petelocal.net
+          - dashboard.wordpresspete.petelocal.net
+          - mydashboard.wordpresspete.petelocal.net
+          - dashboard.wordpresspete.com
+          - dashboard.deploypete.petelocal.net
+          - deploypete.petelocal.net
+    mem_limit: 384m
+    mem_reservation: 256m
+    memswap_limit: 768m
+    cpus: "0.7"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+  php:
+    build:
+      context: ./php
+      args:
+        PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
+        PHP_VERSION: "${PHP_VERSION}"
+        SERVER: development
+    restart: always
+    depends_on:
+      - apache
+      - db
+      - redis
+    expose:
+      - "9000"                           
+    volumes:
+      - wp_data:/var/www/html
+      - ssh_data:/var/www/.ssh
+      - ssh_data:/root/.ssh
+      - apache_sites_available:/etc/apache2/sites-available
+      - apache_sites_enabled:/etc/apache2/sites-enabled
+      - pma_data:/usr/src/phpmyadmin
+      - ssl_data:/etc/letsencrypt
+      - apache_logs:/var/log/apache2      
+    env_file: .env                       
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      PETE_DB_NAME: ${PETE_DB_NAME}
+      PETE_DB_USER: ${PETE_DB_USER}
+      PETE_DB_PASSWORD: ${PETE_DB_PASS}
+      PETE_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+      APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
+      APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
+      APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      REDIS_HOST: redis
+      PHP_VERSION: 8.2
+    mem_limit: 1536m
+    mem_reservation: 1024m
+    memswap_limit: 2048m
+    cpus: "2.0"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+  db:
+    build:
+      context: ./db
+      args:
+        SERVER: development
+    volumes:
+      - db_data:/var/lib/mysql
+    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    mem_limit: 1024m
+    mem_reservation: 768m
+    memswap_limit: 1536m
+    cpus: "1.0"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    mem_limit: 256m
+    mem_reservation: 128m
+    memswap_limit: 512m
+    cpus: "0.3"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  wp_data:
+  db_data:
+  ssh_data:
+  apache_sites_available:
+  apache_sites_enabled:
+  pma_data:
+  ssl_data:
+  apache_logs:
+```
+
+========================================
+
+**php/Dockerfile**
+```
+# ──────────────────────────────────────────────────────────────────────
+# WordPress Pete – parameterised PHP-FPM image
+#   • Build with any officially-maintained tag (8.1-fpm, 8.2-fpm, 8.3-fpm …)
+#   • Default is 8.3-fpm if no --build-arg is supplied
+# ──────────────────────────────────────────────────────────────────────
+ARG PHP_VERSION=8.3
+
+
+FROM php:${PHP_VERSION}-fpm
+
+ARG PETE_ENVIRONMENT=production
+ENV PETE_ENVIRONMENT=${PETE_ENVIRONMENT}
+
+# ────────────── 0. Shared ENV ─────────────────────────────────────────
+ENV DEBIAN_FRONTEND=noninteractive \
+    COMPOSER_ALLOW_SUPERUSER=1 \
+    COMPOSER_DISABLE_XDEBUG_WARN=1
+
+
+ENV CACHETOOL_VERSION=9.1.0
+RUN set -eux; \
+    curl -fsSL -o /usr/local/bin/cachetool \
+      "https://gordalina.github.io/cachetool/downloads/cachetool.phar"; \
+    chmod +x /usr/local/bin/cachetool; \
+    # default to FPM TCP listener (change to socket if you use one)
+    printf "adapter: fastcgi\nfastcgi: \"127.0.0.1:9000\"\n" > /usr/local/etc/cachetool.yml; \
+    # tiny wrapper for one-liner refresh
+    printf '%s\n' \
+      '#!/usr/bin/env sh' \
+      'set -e' \
+      'CFG="${CACHETOOL_CONFIG:-/usr/local/etc/cachetool.yml}"' \
+      'exec /usr/local/bin/cachetool --config="$CFG" opcache:reset' \
+      > /usr/local/bin/opcache-refresh && chmod +x /usr/local/bin/opcache-refresh; \
+    # smoke test
+    cachetool --version
+
+RUN mkdir -p /var/log/php-fpm \
+ && chown -R www-data:www-data /var/log/php-fpm
+
+# ────────────── 1. System & PHP extensions (WebP ready) ──────────────
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        # base utilities
+        default-mysql-client vim sudo git unzip zip curl ca-certificates cron\
+        # PHP image libs
+        libfreetype6-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
+        libzip-dev libonig-dev libxml2-dev \
+        # Imagick deps
+        libmagickwand-dev \
+        # Python helpers
+        python3 python3-pip python3-jinja2 python3-pandas python3-requests \
+        # misc tools
+        openssh-client docker.io certbot python3-certbot-apache && \
+    \
+    # Python packages
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+        pip3 install --no-cache-dir gdown python-dotenv && \
+    \
+    # ------- compile GD with WebP ------- \
+    docker-php-ext-configure gd \
+        --with-freetype \
+        --with-jpeg \
+        --with-webp && \
+    docker-php-ext-install -j"$(nproc)" \
+        mysqli pdo pdo_mysql gd zip opcache intl mbstring && \
+    \
+    # ------- PECL extensions: Imagick (+WebP) & Redis ------- \
+    pecl install imagick redis && \
+    docker-php-ext-enable imagick redis && \
+    \
+    # clean image
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN /bin/sh -lc 'touch /var/log/cron.log && chmod 0644 /var/log/cron.log'
+
+# ────────────── 2. Node.js & npm ──────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
+
+# ────────────── 3. Composer & WP-CLI ─────────────────────────────────
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
+    curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x /usr/local/bin/wp
+
+# ────────────── 4. Set php.ini & www.conf ─────────
+ARG SERVER=16ram-4cpu
+
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/php.ini /usr/local/etc/php/php.ini
+COPY ${SERVER}/www.conf /usr/local/etc/php-fpm.d/www.conf
+
+# ────────────── 5. Pete configs & helper scripts ─────────
+COPY git/.gitconfig              /root/.gitconfig
+COPY pete_install.sh /usr/local/bin/pete_install.sh
+RUN chmod +x /usr/local/bin/pete_install.sh \
+ && chown www-data:www-data /usr/local/bin/pete_install.sh \
+ && apt-get update && apt-get install -y --no-install-recommends dos2unix && rm -rf /var/lib/apt/lists/* \
+ && dos2unix /usr/local/bin/pete_install.sh || true
+
+# sudo rules, pma template, etc. (same as before)
+RUN mkdir -p /etc/sudoers.d /var/www/.ssh /data/wwwlog && \
+    printf '%s\n' \
+     'www-data ALL=(ALL) NOPASSWD: /usr/bin/git, /etc/init.d/apache2 reload, /usr/bin/update-alternatives, /var/www/html/Pete/scripts/*, /usr/bin/docker exec wp-pete-docker-apache-1 apachectl -k graceful' > /etc/sudoers.d/www-data && \
+    chmod 440 /etc/sudoers.d/www-data && \
+    chown -R www-data:www-data /var/www
+
+COPY phpmyadmin/config.inc.php.custom /opt/pma-config/
+RUN sed -i "s/^\(\$cfg\['blowfish_secret'\][[:space:]]*=[[:space:]]*\).*;/\1'__BLOWFISH__';/" \
+        /opt/pma-config/config.inc.php.custom
+
+# Disable client-side SSL requirement for MariaDB client tools
+RUN mkdir -p /etc/mysql/conf.d && \
+    printf "[client]\nssl=0\nskip_ssl\n\n[mysql]\nssl=0\nskip_ssl\n\n[mysqladmin]\nssl=0\nskip_ssl\n" \
+    > /etc/mysql/conf.d/disable-ssl.cnf
+
+#PROGRAMMING SHORTCUTS
+RUN echo "alias gs='git status'" >> /etc/bash.bashrc
+RUN echo "alias prompt='python3 prompt2.py -e prompt.env'" >> /etc/bash.bashrc
+RUN echo "alias cphp='docker compose exec php bash'" >> /etc/bash.bashrc
+RUN echo "alias capache='docker compose exec apache bash'" >> /etc/bash.bashrc
+RUN echo "alias dbuild='docker compose up --build'" >> /etc/bash.bashrc
+RUN echo "alias dphp='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
+RUN echo "alias dapache='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
+
+
+# ────────────── 6. Runtime defaults ──────────────────────────────────
+WORKDIR /var/www/html
+EXPOSE 9000
+
+# Delegates to Pete’s installer, which eventually execs php-fpm
+ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
+```
+
+========================================
+
+**db/Dockerfile**
+```
+FROM mariadb:10.6
+
+# your existing init stuff
+COPY init.sh /docker-entrypoint-initdb.d/init.sh
+RUN apt-get update && apt-get install -y --no-install-recommends dos2unix \
+ && find /docker-entrypoint-initdb.d -type f -name "*.sh" -exec dos2unix {} \; \
+ && chmod +x /docker-entrypoint-initdb.d/*.sh \
+ && rm -rf /var/lib/apt/lists/*
+
+#REFINE ACPACHE PERFORMANCE
+ARG SERVER=16ram-4cpu
+
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/99-pete.cnf /etc/mysql/conf.d/99-pete.cnf
+RUN chmod 0644 /etc/mysql/conf.d/99-pete.cnf
+```
+
+========================================
+
+**apache/Dockerfile**
+```
+# ─────────────────────────────────────────────
+# Apache (event) + ModSecurity 2 + OWASP CRS
+# ─────────────────────────────────────────────
+FROM debian:bookworm-slim
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends logrotate \
+      apache2 apache2-utils \
+      libapache2-mod-security2 \
+      certbot python3-certbot-apache \
+      sudo curl ca-certificates vim-tiny && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libapache2-mod-xsendfile \
+  && a2enmod xsendfile
+
+RUN printf '%s\n' \
+  'XSendFile On' \
+  'XSendFilePath /var/www/html' \
+  'XSendFilePath /var/www/html/Pete' \
+  'XSendFilePath /var/www/html/Pete/backups' \
+  'XSendFilePath /var/www/html/Pete/storage' \
+  'XSendFilePath /var/www/html/Pete/storage/app' \
+  > /etc/apache2/conf-available/xsendfile.conf \
+  && a2enconf xsendfile
+
+# 1) Provide ModSecurity rotation policy
+COPY modsecurity/modsecurity.logrotate /etc/logrotate.d/modsecurity
+
+# 2) Ensure logrotate state file exists (prevents duplicate rotations)
+RUN mkdir -p /var/lib/logrotate && \
+    touch /var/lib/logrotate/status && \
+    chmod 0644 /var/lib/logrotate/status
+
+# 3) Make sure the audit log exists and is writable (you already do this later, but harmless here)
+RUN mkdir -p /var/log/apache2 && \
+    touch /var/log/apache2/modsec_audit.log && \
+    chown -R www-data:www-data /var/log/apache2 && \
+    chmod 0640 /var/log/apache2/modsec_audit.log
+
+# ---- patch the stock apache2 logrotate to stop rotating modsec_audit.log
+# Replace the wildcard stanza "/var/log/apache2/*.log {" with an explicit list
+# (access/error/other_vhosts_access only). This avoids duplicate handling.
+RUN set -e; \
+  tmp="$(mktemp)"; \
+  awk 'BEGIN{re="^/var/log/apache2/\\*\\.log[[:space:]]*\\{"} \
+       $0 ~ re {print "/var/log/apache2/access.log /var/log/apache2/error.log /var/log/apache2/other_vhosts_access.log {"; next} \
+       {print}' /etc/logrotate.d/apache2 > "$tmp" \
+  && cat "$tmp" > /etc/logrotate.d/apache2 \
+  && rm -f "$tmp"
+
+RUN a2dismod mpm_prefork && \
+    a2enmod mpm_event proxy proxy_fcgi rewrite headers expires ssl \
+            http2 deflate \
+    && a2enmod cgid 
+
+RUN ln -s /usr/bin/vim.tiny /usr/bin/vim
+COPY conf/status.conf /etc/apache2/mods-enabled/status.conf
+
+#REFINE ACPACHE PERFORMANCE
+ARG SERVER=16ram-4cpu
+
+# Always copy the performance profile (must exist in build context under apache/${SERVER}/)
+COPY ${SERVER}/performance.conf /etc/apache2/conf-available/performance.conf
+
+# Only enable it in production
+RUN a2enconf performance
+
+# ── Install ModSecurity 2 and Debian’s CRS package ───────────────────────────
+ARG CRS_VERSION=4.15.0
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      libapache2-mod-security2 \
+      curl \
+      ca-certificates && \
+    \
+    # Prepare ModSecurity dirs
+    mkdir -p /etc/modsecurity /etc/modsecurity/rules /var/cache/modsecurity && \
+    \
+    # Copy base config
+    cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
+    \
+    # Download and extract OWASP CRS v${CRS_VERSION}
+    curl -fsSL "https://github.com/coreruleset/coreruleset/archive/refs/tags/v${CRS_VERSION}.tar.gz" \
+      -o /tmp/crs.tar.gz && \
+    tar zxvf /tmp/crs.tar.gz -C /usr/share && \
+    mv /usr/share/coreruleset-${CRS_VERSION} /usr/share/modsecurity-crs && \
+    rm /tmp/crs.tar.gz && \
+    \
+    # Copy CRS example setup into place
+    cp /usr/share/modsecurity-crs/crs-setup.conf.example /etc/modsecurity/crs-setup.conf && \
+    \
+    # Symlink all rule and data files
+    ln -sf /usr/share/modsecurity-crs/rules/*.conf /etc/modsecurity/rules/ && \
+    ln -sf /usr/share/modsecurity-crs/rules/*.data /etc/modsecurity/rules/
+
+# ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
+COPY modsecurity/modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
+COPY modsecurity/whitelist.conf /etc/modsecurity/whitelist.conf
+
+# ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
+RUN a2enmod security2 \
+ && rm -f /etc/apache2/mods-enabled/security2.conf \
+ && a2enconf modsecurity \
+ && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
+ \
+ # enable JSON output for the audit log
+ && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
+ \
+ && apache2ctl configtest
+
+# ── make sure Apache can write its own logs ──────────────────────────────
+RUN set -e \
+ && mkdir -p /var/log/apache2 \
+ && touch      /var/log/apache2/modsec_audit.log \
+ && chown -R www-data:www-data /var/log/apache2 \
+ && chmod 750 /var/log/apache2
+
+# 4) Reload-hook CGI
+ARG APACHE_RELOAD_SECRET
+COPY cgi/reload_apache.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/reload_apache.cgi \
+ && chmod 755 /usr/local/bin/reload_apache.cgi
+
+COPY cgi/issue_cert.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/issue_cert.cgi \
+    && chmod 755 /usr/local/bin/issue_cert.cgi
+
+COPY modsecurity/toggle_modsec.sh /usr/local/bin/
+RUN chmod 755  /usr/local/bin/toggle_modsec.sh \
+    && chown root:root /usr/local/bin/toggle_modsec.sh
+
+COPY modsecurity/modsecurity_status.cgi /usr/local/bin/
+RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/modsecurity_status.cgi \
+    && chmod 755 /usr/local/bin/modsecurity_status.cgi
+
+
+# 5) Pete & phpMyAdmin base vhosts
+COPY conf/pete.conf /etc/apache2/sites-available/000-pete.conf
+COPY conf/phpmyadmin.conf   /etc/apache2/sites-available/
+
+# 6) Make vhost dirs shared & writable *before* volume is created
+RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
+
+# 7) Enable baseline sites & configs (done once at build-time)
+RUN a2ensite 000-pete.conf && \
+    a2enconf modsecurity && \
+    a2dissite 000-default.conf
+
+# 8) Allow www-data (CGI) to reload Apache
+RUN printf '%s\n' \
+  'www-data ALL=(root) NOPASSWD: /usr/sbin/apachectl -k graceful' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot' \
+  'www-data ALL=(root) NOPASSWD: /usr/bin/certbot renew' \
+  'www-data ALL=(root) NOPASSWD: /usr/local/bin/toggle_modsec.sh' \
+  'Defaults:www-data !requiretty' \
+  > /etc/sudoers.d/www-data && chmod 440 /etc/sudoers.d/www-data
+
+RUN echo 'ServerName localhost' >> /etc/apache2/apache2.conf
+WORKDIR /var/www/html
+EXPOSE 80
+
+# wait-helper script
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh \
+ && apt-get update && apt-get install -y --no-install-recommends dos2unix && rm -rf /var/lib/apt/lists/* \
+ && dos2unix /usr/local/bin/start.sh \
+             /usr/local/bin/reload_apache.cgi \
+             /usr/local/bin/issue_cert.cgi \
+             /usr/local/bin/modsecurity_status.cgi \
+             /usr/local/bin/toggle_modsec.sh || true
+
+# --- new: ensure volume will be writable by Pete ---
+RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
+
+CMD ["/usr/local/bin/start.sh"]
+
+```
+
+========================================
+
+**apache/modsecurity/modsecurity-apache.conf**
+```
+LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
+
+ <IfModule security2_module>
+     SecRuleEngine On
+     SecRequestBodyAccess On
+     SecResponseBodyAccess Off
+
+     Include /etc/modsecurity/modsecurity.conf
+
+     Include /etc/modsecurity/whitelist.conf
+
+     Include /etc/modsecurity/crs-setup.conf
+
+     IncludeOptional /etc/modsecurity/rules/*.conf
+
+    SecRequestBodyLimit        1073741824
+    SecRequestBodyNoFilesLimit 1073741824
+
+ </IfModule>
+```
+
+========================================
+
+**apache/modsecurity/whitelist.conf**
+```
+# =====================================================================
+# Pete Panel – ModSecurity whitelist (surgical false-positive fixes)
+# NOTE: Keep comments OUTSIDE quoted action lists. No backslashes inside quotes.
+# =====================================================================
+
+# -----------------------------
+# Baseline FP removals (global)
+# -----------------------------
+
+# Simple, unconditional removal of 920450 for WP REST
+SecRule REQUEST_URI "@rx ^/wp-json/" \
+  "id:1100203,phase:1,pass,nolog,ctl:ruleRemoveById=920450"
+
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1100204,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" \
+    "t:none,ctl:ruleRemoveById=920450"
+
+SecAction \
+  "id:10000,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=953100,\
+   ctl:ruleRemoveById=959100,\
+   ctl:ruleRemoveById=980170"
+
+# -----------------------------
+# Pete internal paths (engine off)
+# -----------------------------
+SecRule REQUEST_URI "@beginsWith /wp-admin" \
+  "id:1000001,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /admin/phpinfo" \
+  "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /admin/phpinfo/view" \
+  "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /validate-pete" \
+  "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /pete_plugins_install" \
+  "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /pete_update" \
+  "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /update_post" \
+  "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /phpmyadmin" \
+  "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /phpmyinfo" \
+  "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
+  "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /internal-certbot" \
+  "id:1000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /internal-reload" \
+  "id:1000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /pete_plugins" \
+  "id:10000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /oupdates" \
+  "id:10000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /wp_plugins" \
+  "id:10000013,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /pete_installers" \
+  "id:10000014,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /wp_global_options" \
+  "id:10000015,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /validate_site_json" \
+  "id:10000016,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /wp-json/pete/v1" \
+  "id:10000017,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@beginsWith /plugins" \
+  "id:10000018,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Pete dashboard rule (example specific)
+SecRule REQUEST_URI "@beginsWith /wordpress-importer" \
+  "id:910004,phase:1,pass,nolog,ctl:ruleRemoveById=200004"
+
+# -----------------------------
+# WooCommerce allow-list
+# -----------------------------
+
+# Engine off for Woo AJAX endpoints (?wc-ajax=...)
+SecRule QUERY_STRING "@contains wc-ajax=" \
+  "id:1000100,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Engine off for admin-ajax.php (some WC add-ons)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:1000101,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Engine off for legacy wc-api callbacks
+SecRule QUERY_STRING "@contains wc-api=" \
+  "id:1000102,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Surgical relaxations for specific wc-ajax actions
+SecRule QUERY_STRING "@rx \bwc-ajax=(update_order_review|checkout|apply_coupon|get_cart_totals)\b" \
+  "id:1000110,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=930120,ctl:ruleRemoveById=942430"
+
+# Surgical relaxations for wc-api payloads
+SecRule QUERY_STRING "@rx \bwc-api=\w+" \
+  "id:1000111,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160"
+
+# Allow methods beyond defaults
+SecAction \
+ "id:1000112,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
+
+# -----------------------------
+# Core WordPress relaxations
+# -----------------------------
+
+# Admin AJAX – keep engine ON but remove noisy CRS rules
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:1100100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=942430"
+
+# Heartbeat (quieter editing)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1100101,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@streq heartbeat" "t:none,ctl:ruleEngine=Off"
+
+SecRule REQUEST_URI "@rx ^/wp-json/" \
+  "id:1100200,phase:1,pass,nolog,\
+   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
+   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
+   ctl:ruleRemoveById=920450"
+
+SecRule REQUEST_URI "@rx ^/index\.php$" "id:1100201,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" "t:none,\
+   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
+   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
+   ctl:ruleRemoveById=920450"
+
+# REST writes – relax only content-like fields
+SecRule REQUEST_URI "@rx ^/(wp-json/|index\.php$)" "id:1100202,phase:2,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=941160;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content,ctl:ruleRemoveTargetById=942110;ARGS:content,ctl:ruleRemoveTargetById=941100;ARGS:excerpt,ctl:ruleRemoveTargetById=942100;ARGS:excerpt,ctl:ruleRemoveTargetById=941100;ARGS:blocks,ctl:ruleRemoveTargetById=942100;ARGS:blocks"
+
+# Media Library uploads
+SecRule REQUEST_URI "@endsWith /wp-admin/async-upload.php" \
+  "id:1100300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=930120"
+# ^ file path access relaxation included
+
+# Search (?s=) – avoid SQLi FPs on natural queries
+SecRule REQUEST_METHOD "@streq POST" "id:1100400,phase:2,pass,nolog,chain"
+  SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages/[0-9]+/autosaves($|/)" "t:none,chain"
+  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,ctl:ruleRemoveById=932370,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180"
+
+
+# Preview & Customizer – long/b64 content
+SecRule REQUEST_URI "@endsWith /wp-admin/post.php" "id:1100500,phase:1,pass,nolog,chain"
+  SecRule ARGS:preview "@streq true" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content"
+
+SecRule REQUEST_URI "@endsWith /wp-admin/customize.php" \
+  "id:1100501,phase:1,pass,nolog,ctl:ruleRemoveTargetById=941100;ARGS,ctl:ruleRemoveTargetById=942100;ARGS"
+
+# Optional: wp-cron (usually internal)
+SecRule REQUEST_URI "@endsWith /wp-cron.php" \
+  "id:1100600,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# -----------------------------
+# Popular plugins/builders
+# -----------------------------
+
+# WooCommerce extras (surgical, REST/admin-ajax variants handled above)
+SecRule REQUEST_URI "@contains /wc-api/" \
+  "id:1200100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
+
+# Contact Form 7 (admin-ajax)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200200,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@rx ^wpcf7|contact\-form\-7" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
+
+# Elementor (REST + admin-ajax)
+SecRule REQUEST_URI "@rx ^/wp-json/elementor/v1/" \
+  "id:1200300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200301,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@rx ^elementor_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+# Divi Builder (admin-ajax)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200400,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@contains et_fb_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+# Yoast SEO (REST)
+SecRule REQUEST_URI "@rx ^/wp-json/yoast/v1/" \
+  "id:1200500,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+# Query Monitor (REST + admin-ajax)
+SecRule REQUEST_URI "@rx ^/wp-json/qm/" \
+  "id:1200600,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200601,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@streq query-monitor" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
+
+
+# Gutenberg Templates / Template Parts saves (JSON) – relax noisy rules only on content-like fields
+# Also relax REQUEST_BODY to cover large block JSON that still trips 9322xx/9411xx.
+
+# Native /wp-json/... form
+SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/(templates|template-parts)(/|$)" \
+  "id:1100210,phase:2,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
+     ctl:ruleRemoveTargetById=941100;ARGS:content,\
+     ctl:ruleRemoveTargetById=941160;ARGS:content,\
+     ctl:ruleRemoveTargetById=941180;ARGS:content,\
+     ctl:ruleRemoveTargetById=941140;ARGS:content,\
+     ctl:ruleRemoveTargetById=942100;ARGS:content,\
+     ctl:ruleRemoveTargetById=942110;ARGS:content,\
+     ctl:ruleRemoveTargetById=932230;ARGS:content,\
+     ctl:ruleRemoveTargetById=932235;ARGS:content,\
+     ctl:ruleRemoveTargetById=932250;ARGS:content,\
+     ctl:ruleRemoveTargetById=932260;ARGS:content,\
+     ctl:ruleRemoveTargetById=941100;ARGS:source,\
+     ctl:ruleRemoveTargetById=941160;ARGS:source,\
+     ctl:ruleRemoveTargetById=942100;ARGS:source,\
+     ctl:ruleRemoveTargetById=942110;ARGS:source,\
+     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
+
+# index.php?rest_route=/wp/v2/... form
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:1100211,phase:2,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2F(templates|template\-parts)(%2F|&|$)" "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
+     ctl:ruleRemoveTargetById=941100;ARGS:content,\
+     ctl:ruleRemoveTargetById=941160;ARGS:content,\
+     ctl:ruleRemoveTargetById=941180;ARGS:content,\
+     ctl:ruleRemoveTargetById=941140;ARGS:content,\
+     ctl:ruleRemoveTargetById=942100;ARGS:content,\
+     ctl:ruleRemoveTargetById=942110;ARGS:content,\
+     ctl:ruleRemoveTargetById=932230;ARGS:content,\
+     ctl:ruleRemoveTargetById=932235;ARGS:content,\
+     ctl:ruleRemoveTargetById=932250;ARGS:content,\
+     ctl:ruleRemoveTargetById=932260;ARGS:content,\
+     ctl:ruleRemoveTargetById=941100;ARGS:source,\
+     ctl:ruleRemoveTargetById=941160;ARGS:source,\
+     ctl:ruleRemoveTargetById=942100;ARGS:source,\
+     ctl:ruleRemoveTargetById=942110;ARGS:source,\
+     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
+
+# =====================================================================
+# End of whitelist
+# =====================================================================
+
+# b) index.php?rest_route=/wp/... form (percent-encoded route)
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1100199,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" "t:none,chain"
+  SecRule REQUEST_HEADERS_NAMES "@contains x-http-method-override" \
+    "t:lowercase,ctl:ruleRemoveById=920450"
+
+# Also handle the index.php?rest_route= form (percent-encoded)
+SecRule REQUEST_METHOD "@streq POST" "id:1100401,phase:2,pass,nolog,chain"
+  SecRule REQUEST_BASENAME "@streq index.php" "t:none,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages%2F[0-9]+%2Fautosaves" "t:none,ctl:ruleRemoveById=932370,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180"
+
+# Parse JSON when Content-Type advertises it (mod_security2 + YAJL)
+SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+ "id:10090,phase:1,pass,nolog,ctl:requestBodyProcessor=JSON"
+
+# /wp-json/wp/v2/pages (create/update) – relax noisy CRS rules on content-like fields
+# Relax noisy CRS rules only on Gutenberg "pages" writable fields (and JSON body)
+SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
+  "id:1100220,phase:2,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
+    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932370;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
+    \
+    ctl:ruleRemoveTargetById=932230;ARGS:content,\
+    ctl:ruleRemoveTargetById=932235;ARGS:content,\
+    ctl:ruleRemoveTargetById=932240;ARGS:content,\
+    ctl:ruleRemoveTargetById=932250;ARGS:content,\
+    ctl:ruleRemoveTargetById=932260;ARGS:content,\
+    ctl:ruleRemoveTargetById=932370;ARGS:content,\
+    ctl:ruleRemoveTargetById=941100;ARGS:content,\
+    ctl:ruleRemoveTargetById=941140;ARGS:content,\
+    ctl:ruleRemoveTargetById=941160;ARGS:content,\
+    ctl:ruleRemoveTargetById=941180;ARGS:content,\
+    \
+    ctl:ruleRemoveTargetById=932230;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932235;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932240;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932250;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932260;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932370;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941100;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941140;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941160;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941180;ARGS:content.raw,\
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=942100;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=942110;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt.raw, \
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt.raw, \
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:title, \
+    ctl:ruleRemoveTargetById=941160;ARGS:title, \
+    ctl:ruleRemoveTargetById=941100;ARGS:title.raw, \
+    ctl:ruleRemoveTargetById=941160;ARGS:title.raw, \
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:blocks, \
+    ctl:ruleRemoveTargetById=941160;ARGS:blocks"
+
+# index.php?rest_route=/wp/v2/pages… (encoded form)
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:1100221,phase:2,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages(%2F|&|$)" "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
+    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932370;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
+    \
+    ctl:ruleRemoveTargetById=932230;ARGS:content,\
+    ctl:ruleRemoveTargetById=932235;ARGS:content,\
+    ctl:ruleRemoveTargetById=932240;ARGS:content,\
+    ctl:ruleRemoveTargetById=932250;ARGS:content,\
+    ctl:ruleRemoveTargetById=932260;ARGS:content,\
+    ctl:ruleRemoveTargetById=932370;ARGS:content,\
+    ctl:ruleRemoveTargetById=941100;ARGS:content,\
+    ctl:ruleRemoveTargetById=941140;ARGS:content,\
+    ctl:ruleRemoveTargetById=941160;ARGS:content,\
+    ctl:ruleRemoveTargetById=941180;ARGS:content,\
+    \
+    ctl:ruleRemoveTargetById=932230;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932235;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932240;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932250;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932260;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=932370;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941100;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941140;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941160;ARGS:content.raw,\
+    ctl:ruleRemoveTargetById=941180;ARGS:content.raw,\
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=942100;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=942110;ARGS:excerpt, \
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt.raw, \
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt.raw, \
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:title, \
+    ctl:ruleRemoveTargetById=941160;ARGS:title, \
+    ctl:ruleRemoveTargetById=941100;ARGS:title.raw, \
+    ctl:ruleRemoveTargetById=941160;ARGS:title.raw, \
+    \
+    ctl:ruleRemoveTargetById=941100;ARGS:blocks, \
+    ctl:ruleRemoveTargetById=941160;ARGS:blocks"
+
+  # Gutenberg PAGES via index.php?rest_route= (encoded)
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:1101221,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages(?:%2F[0-9]+)?(?:%2F(?:autosaves|revisions(?:%2F[0-9]+)?))?(?:&|$)" "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" "t:none,\
+    ctl:requestBodyProcessor=JSON,\
+    ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
+    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
+    setvar:tx.inbound_anomaly_score_threshold=20"
+
+# Gutenberg PAGES via /wp-json/wp/v2/pages (native)
+SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
+  "id:1101220,phase:1,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" "t:none,\
+    ctl:requestBodyProcessor=JSON,\
+    ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
+    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
+    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
+    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
+    setvar:tx.inbound_anomaly_score_threshold=20"
+
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1109001,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages(?:%2F[0-9]+)?(?:%2F(?:autosaves|revisions(?:%2F[0-9]+)?))?(?:&|$)" \
+    "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180,\
+     ctl:ruleRemoveById=932230,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=932240,ctl:ruleRemoveById=932250,ctl:ruleRemoveById=932260,\
+     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
+     ctl:ruleRemoveById=949110"
+
+# 2) Native WP-JSON route
+SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
+  "id:1109002,phase:1,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180,\
+     ctl:ruleRemoveById=932230,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=932240,ctl:ruleRemoveById=932250,ctl:ruleRemoveById=932260,\
+     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
+     ctl:ruleRemoveById=949110"
+
+# 1) admin-ajax.php with Divi import actions (action contains et_core, et_builder, et_import)
+SecRule REQUEST_BASENAME "@streq admin-ajax.php" \
+  "id:1209001,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@rx (et_core|et_builder|et_import|et_layout|divi_import|et_save_layout)" \
+    "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:layout,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:data,\
+     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=933210,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941200,ctl:ruleRemoveById=941350,ctl:ruleRemoveById=941400,ctl:ruleRemoveById=942190,ctl:ruleRemoveById=942550,\
+     ctl:ruleRemoveById=949110"
+
+# 2) WP-JSON or custom Divi REST endpoints (common vendor patterns)
+SecRule REQUEST_URI "@rx /wp-json/(?:et_builder|et_core|divi|et-)?(layouts|builder|import|export|layout|et_core)/?" \
+  "id:1209002,phase:1,pass,nolog,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:layout,\
+     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:data,\
+     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=933210,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941200,ctl:ruleRemoveById=941350,ctl:ruleRemoveById=941400,ctl:ruleRemoveById=942190,ctl:ruleRemoveById=942550,\
+     setvar:tx.inbound_anomaly_score_threshold=20"
+
+# 3) Extra defensive narrow rule: if request body shows Divi markers (et_pb_ etc.) then remove target for REQUEST_BODY
+SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+  "id:1209003,phase:1,pass,nolog,chain"
+  SecRule REQUEST_BODY "@rx et_pb_|et-core|et_builder|et-core|et_layout|divi" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
+     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,\
+     setvar:tx.inbound_anomaly_score_threshold=25"
+
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1209010,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fdivi%2Fv1%2Fportability%2Fimport($|&)|(^|&)rest_route=/divi/v1/portability/import($|&)" \
+    "t:none,chain"
+  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
+    "t:none,ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=933210;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941200;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941350;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=941400;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942190;REQUEST_BODY,\
+     ctl:ruleRemoveTargetById=942550;REQUEST_BODY,\
+     ctl:ruleRemoveById=949110,\
+     ctl:ruleRemoveTargetById=932235;ARGS:content,ctl:ruleRemoveTargetById=932235;ARGS:layout,ctl:ruleRemoveTargetById=932235;ARGS:data,\
+     ctl:ruleRemoveTargetById=941140;ARGS:content,ctl:ruleRemoveTargetById=941160;ARGS:content,ctl:ruleRemoveTargetById=941200;ARGS:content,\
+     setvar:tx.inbound_anomaly_score_threshold=30"
+
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1209011,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fdivi%2Fv1%2Fportability%2Fimport($|&)|(^|&)rest_route=/divi/v1/portability/import($|&)" \
+    "t:none,chain"
+  SecRule &ARGS:_wpnonce|REQUEST_COOKIES:wordpress_logged_in_ "@gt 0" \
+    "t:none,\
+     ctl:ruleRemoveById=200002"
+```
+
