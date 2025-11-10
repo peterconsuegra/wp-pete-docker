@@ -49,7 +49,7 @@ services:
         PHP_VERSION: "${PHP_VERSION}"
         SERVER: development
     restart: always
-    depends_on:                # ← php waits for apache, db, redis
+    depends_on:
       - apache
       - db
       - redis

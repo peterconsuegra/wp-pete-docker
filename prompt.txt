@@ -1,6 +1,6 @@
 **Context:** You are an experienced DevOps devolver with extensive knowlege in Docker. Below are the code files of a Docker LAMP Pete Panel for WordPress Woocommerce, and Laravel sites
 
-**docker-compose.prod-16ram-4cpu.yml**
+**docker-compose.yml**
 ```
 services:
   apache:
@@ -8,8 +8,7 @@ services:
       context: ./apache
       args:
         APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
-        SERVER: 16ram-4cpu
-        PETE_ENVIRONMENT: ${PETE_ENVIRONMENT}
+        SERVER: development
     restart: always
     volumes:
       - wp_data:/var/www/html           
@@ -22,6 +21,7 @@ services:
       APACHE_RELOAD_SECRET: ${APACHE_RELOAD_SECRET}
       APACHE_RELOAD_URL: ${APACHE_RELOAD_URL}
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
+      TMPDIR: /var/cache/apache2/mod_cache_disk/tmp
       LOGROTATE_INTERVAL: 43200 
     ports:
       - "80:80"
@@ -37,23 +37,23 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
-    mem_limit: 1500m
-    mem_reservation: 1024m
-    cpus: "1.5"
+    mem_limit: 384m
+    mem_reservation: 256m
+    memswap_limit: 768m
+    cpus: "0.7"
     ulimits:
       nofile:
-        soft: 131072
-        hard: 131072
-      nproc:  8192
+        soft: 65536
+        hard: 65536
   php:
     build:
       context: ./php
       args:
         PETE_ENVIRONMENT: "${PETE_ENVIRONMENT}"
         PHP_VERSION: "${PHP_VERSION}"
-        SERVER: 16ram-4cpu
+        SERVER: development
     restart: always
-    depends_on:                # ← php waits for apache, db, redis
+    depends_on:
       - apache
       - db
       - redis
@@ -81,42 +81,44 @@ services:
       APACHE_CERTBOT_URL: ${APACHE_CERTBOT_URL}
       REDIS_HOST: redis
       PHP_VERSION: 8.2
-    mem_limit: 4096m
-    mem_reservation: 3072m
-    cpus: "2.5"
+    mem_limit: 1536m
+    mem_reservation: 1024m
+    memswap_limit: 2048m
+    cpus: "2.0"
     ulimits:
       nofile:
-        soft: 131072
-        hard: 131072
-      nproc:  8192
+        soft: 65536
+        hard: 65536
   db:
     build:
       context: ./db
       args:
-        SERVER: 16ram-4cpu
+        SERVER: development
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    mem_limit: 8192m
-    mem_reservation: 6144m
-    cpus: "3.0"
+    mem_limit: 1024m
+    mem_reservation: 768m
+    memswap_limit: 1536m
+    cpus: "1.0"
     ulimits:
       nofile:
-        soft: 262144
-        hard: 262144
-      nproc: 16384
-      memlock:
-        soft: -1
-        hard: -1
+        soft: 65536
+        hard: 65536
+
   redis:
     image: redis:7-alpine
     restart: always
-    mem_limit: 512m
-    mem_reservation: 256m
-    memswap_limit: 1024m
-    cpus: "0.5"
+    mem_limit: 256m
+    mem_reservation: 128m
+    memswap_limit: 512m
+    cpus: "0.3"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
 volumes:
   wp_data:
@@ -270,135 +272,103 @@ ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 
 ========================================
 
-**php/32ram-8cpu/php.ini**
+**php/development/php.ini**
 ```
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Pete Panel – PHP 8.3 production profile
-; Hetzner CCX33 (32GB RAM / 8 vCPU), WordPress + WooCommerce
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-[PHP]
-; — Core limits —
-memory_limit = 768M                 ; bump to 1024M only if you truly need it
+; ===== Resources =====
+memory_limit = 512M              ; plugin requires ≥512M
 max_execution_time = 120
-max_input_time = 120
-max_input_vars = 5000
-post_max_size = 128M
-upload_max_filesize = 128M
-default_socket_timeout = 60
-output_buffering = 4096
-implicit_flush = Off
+max_input_time = 60
+max_input_vars = 6000            ; safer for Woo + big admin screens
+
+; uploads
+post_max_size = 64M
+upload_max_filesize = 64M
+
+; logging / visibility for dev
 expose_php = Off
-short_open_tag = Off
-zend.enable_gc = On
-
-; — Timezone —
-date.timezone = America/Bogota
-
-; — Errors (quiet prod) —
-error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
-display_errors = Off
-display_startup_errors = Off
+display_errors = Off             ; keep off, log instead
 log_errors = On
-; leave error_log unset here; pool-level error_log will be used
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+; optional: direct PHP error log to file inside container volume
+; error_log = /var/log/php/error.log
 
-; — Filesystem perf —
-realpath_cache_size = 4096K
-realpath_cache_ttl  = 600
-
-; — Opcache (critical for WP) —
+; ===== OPcache (DEV, fast reloads) =====
 opcache.enable = 1
-opcache.enable_cli = 0
-
-; JIT gives no benefit for typical WP workloads
+opcache.enable_cli = 1
+opcache.validate_timestamps = 1  ; dev: always check timestamps
+opcache.revalidate_freq = 1
+opcache.file_update_protection = 0
+opcache.memory_consumption = 192 ; plenty for WP + plugins in dev
+opcache.interned_strings_buffer = 16
+opcache.max_accelerated_files = 100000
+opcache.save_comments = 1
+; JIT usually doesn’t help WordPress; keep it off explicitly
 opcache.jit = 0
 opcache.jit_buffer_size = 0
 
-; Big sites = lots of files
-opcache.memory_consumption      = 512    ; MB
-opcache.interned_strings_buffer = 64     ; MB
-opcache.max_accelerated_files   = 131072
-opcache.max_wasted_percentage   = 5
+; ===== Filesystem resolver speed =====
+realpath_cache_size = 4096K
+realpath_cache_ttl  = 600
 
-opcache.use_cwd              = 1
-opcache.validate_timestamps  = 0         ; PROD: immutable code; reset on deploy
-opcache.revalidate_freq      = 0
-opcache.save_comments        = 1
-opcache.enable_file_override = 1
-opcache.fast_shutdown        = 1
-opcache.consistency_checks   = 0
-
-; — Sessions (WP rarely uses, but keep sane defaults) —
+; ===== Sessions / output =====
 session.gc_probability = 1
-session.gc_divisor     = 1000
-session.gc_maxlifetime = 2880
-session.use_strict_mode = 1
-session.cookie_httponly = 1
-session.cookie_secure = 1
-session.use_only_cookies = 1
+session.gc_divisor = 1000
+session.gc_maxlifetime = 28800
+output_buffering = 0
 
-; — Security —
-cgi.fix_pathinfo = 0
-; keep disable_functions empty; WP/CLI often needs proc_open et al.
-disable_functions =
-
-; — PDO/MySQL —
-mysql.allow_persistent = On
-mysqli.allow_persistent = On
-pdo_mysql.default_socket =
-request_order = "GP"
-variables_order = "GPCS"
+; ===== Sane defaults for CLI tools & HTTP timeouts =====
+default_socket_timeout = 30
+; If you use Redis ext frequently in scripts, you can keep this shorter:
+; redis.pconnect.pooling_enabled = 1
 
 ```
 
 ========================================
 
-**php/16ram-4cpu/www.conf**
+**php/development/www.conf**
 ```
 [www]
 ; --- identity ---
 user  = www-data
 group = www-data
 
-; --- listen (Apache proxy via :9000) ---
+; --- listen (proxy via :9000 from Apache) ---
 listen = 0.0.0.0:9000
 listen.backlog = 256
 listen.owner  = www-data
 listen.group  = www-data
 listen.mode   = 0660
 
-; ================= Process Manager =================
-; With ~4GB for php-fpm and WP/Woo typical peak ~80–120MB per worker,
-; cap to ~28–32 workers for headroom (OPcache, CLI bursts, composer, etc.)
+; --- process manager ---
 pm = dynamic
-pm.max_children = 30            ; sweet spot for your 4GB php container
-pm.start_servers = 8
-pm.min_spare_servers = 8
-pm.max_spare_servers = 16
 
-; recycle to avoid leaks in long-lived pools
-pm.max_requests = 1500
+; With 4GB host and dev workloads, assume ~80–100MB per PHP worker peak.
+; Reserve headroom for OS, OPcache, Composer, and bursts → cap to ~24 workers.
+pm.max_children = 24
+pm.start_servers = 6
+pm.min_spare_servers = 6
+pm.max_spare_servers = 12
 
-; --- timeouts / stability ---
-; Allow slow Woo admin ops and heavy AJAX during peaks without runaway procs.
+; recycle to avoid slow leaks in dev
+pm.max_requests = 500
+pm.process_idle_timeout = 10s
+
+; --- status/health ---
+pm.status_path = /fpm-status
+ping.path      = /fpm-ping
+
+; --- timeouts that help avoid stuck requests in dev ---
 request_terminate_timeout = 0
 request_slowlog_timeout   = 0
 ; slowlog = /var/log/php-fpm/slowlog.log
 
-; --- status/health (keep for metrics) ---
-pm.status_path = /fpm-status
-ping.path      = /fpm-ping
+; --- environment pass-through (optional) ---
+; env[APP_ENV] = $PETE_ENVIRONMENT
+; env[COMPOSER_HOME] = /tmp
 
-; --- env pass-through (optional) ---
-; env[APP_ENV] = production
-
-; --- file/resource limits (leave defaults unless you hit limits) ---
-; rlimit_files = 8192
+; --- limits (keep defaults unless you hit open file limit issues) ---
+; rlimit_files = 4096
 ; rlimit_core  = 0
-
-; --- harden logging at pool level (optional) ---
-; php_admin_value[error_log] = /var/log/php/error.log
-; php_admin_flag[log_errors] = on
 
 ```
 
@@ -896,158 +866,106 @@ CMD ["/usr/local/bin/start.sh"]
 
 ========================================
 
-**apache/16ram-4cpu/performance.conf**
+**apache/development/performance.conf**
 ```
 #######################################################################
-# 0) Global safety timeouts (prod)
+# Apache performance (DEV) – 4GB RAM / 4 vCPU / PHP-FPM behind proxy_fcgi
+# Notes:
+# - PHP concurrency is ultimately capped by PHP-FPM (pm.max_children=24).
+# - Apache can serve many static requests concurrently; keep headroom.
 #######################################################################
-Timeout 30
-RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
 
-# Files on Docker volumes can misbehave with sendfile/MMAP → avoid bugs.
+# --- Core timeouts (dev-friendly, avoid long hangs) ---
+Timeout             120
+CGIDScriptTimeout   120
+
+# Docker/overlayfs friendly: avoid sendfile/mmap issues
 EnableSendfile Off
 EnableMMAP     Off
 
 #######################################################################
-# 1) MPM Event — tuned for Docker limits (1.5 CPU / ~1.5 GB for Apache)
-#    Goal: enough threads to serve H2 keep-alives/static without
-#    overwhelming PHP-FPM (pm.max_children ≈ 24)
+# 1) MPM-event – concurrency & keep-alive
 #######################################################################
 <IfModule mpm_event_module>
-    StartServers              2
+    # With 4 vCPU, 2 children is plenty for dev; 4 gives static headroom.
+    ServerLimit            4
+    StartServers           2
 
-    # 4 children × 64 threads = 256 MaxRequestWorkers
-    # (Plenty for H2 concurrency; PHP-FPM still caps dynamic to ~24)
-    ServerLimit               4
-    ThreadsPerChild          64
-    MaxRequestWorkers       256
+    # 64 threads/child is a good balance; 4 * 64 = 256 MaxRequestWorkers
+    ThreadsPerChild        64
+    MaxRequestWorkers      256
 
-    MinSpareThreads          64
-    MaxSpareThreads         128
+    # Keep enough idle threads to absorb small bursts
+    MinSpareThreads        64
+    MaxSpareThreads        128
 
-    MaxConnectionsPerChild 10000
+    # Recycle to avoid memory creep during long dev sessions
+    MaxConnectionsPerChild 2000
 
+    # Keep-Alive: low timeout keeps threads free; enough requests per conn
     KeepAlive On
     KeepAliveTimeout 2
     MaxKeepAliveRequests 200
 </IfModule>
 
 #######################################################################
-# 2) Core server hardening & small wins
+# 2) Core server tweaks
 #######################################################################
 ServerTokens Prod
 ServerSignature Off
-TraceEnable Off
+
+# Make ETags stable and simple in containers
 FileETag MTime Size
 
 #######################################################################
-# 3) HTTP/2 tuning (server push is deprecated → keep it off)
+# 3) HTTP/2
 #######################################################################
 Protocols h2 http/1.1
-ProtocolsHonorOrder On
-# Reasonable defaults for Woo + many small assets
-H2MaxSessionStreams 100
-H2StreamMaxMemSize 262144
-H2WindowSize 6291456
+# HTTP/2 Server Push is deprecated in browsers; keep it off.
+H2Push off
 
 #######################################################################
-# 4) Compression (gzip; Brotli if module is present)
+# 4) Compression – gzip / deflate
 #######################################################################
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE \
-    text/html text/plain text/css text/xml text/javascript \
-    application/javascript application/json application/xml \
-    image/svg+xml
-  # Don’t waste CPU compressing already-compressed types
-  SetEnvIfNoCase Request_URI "\.(?:gif|jpe?g|png|webp|avif|ico|pdf|zip|gz|bz2|7z|mp4|mp3|woff2?)$" no-gzip
-</IfModule>
-
-<IfModule brotli_module>
-  BrotliCompressionQuality 5
-  AddOutputFilterByType BROTLI_COMPRESS \
-    text/html text/plain text/css text/xml text/javascript \
-    application/javascript application/json application/xml \
-    image/svg+xml
+    AddOutputFilterByType DEFLATE \
+        text/html text/plain text/css text/xml text/javascript \
+        application/javascript application/json image/svg+xml
 </IfModule>
 
 #######################################################################
-# 5) Far-future caching for static assets (client-side cache)
+# 5) Disk Cache (opt-in by vhost; keep path consistent with container)
 #######################################################################
-<IfModule mod_expires.c>
-  ExpiresActive On
-  # cache static forever (rev via querystring or file name hashing)
-  ExpiresByType text/css                   "access plus 1 year"
-  ExpiresByType application/javascript     "access plus 1 year"
-  ExpiresByType image/svg+xml              "access plus 1 year"
-  ExpiresByType image/avif                 "access plus 1 year"
-  ExpiresByType image/webp                 "access plus 1 year"
-  ExpiresByType image/png                  "access plus 1 year"
-  ExpiresByType image/jpeg                 "access plus 1 year"
-  ExpiresByType image/gif                  "access plus 1 year"
-  ExpiresByType font/woff2                 "access plus 1 year"
-  ExpiresDefault                           "access plus 1 month"
-</IfModule>
-
-<IfModule mod_headers.c>
-  <FilesMatch "\.(?:css|js|svg|avif|webp|png|jpe?g|gif|woff2?)$">
-    Header unset ETag
-    Header set Cache-Control "public, max-age=31536000, immutable"
-  </FilesMatch>
-</IfModule>
-
-#######################################################################
-# 6) Disk cache (optional, safe rules) — avoid dynamic Woo endpoints
-#     Apache container has limited RAM/CPU; keep this modest.
-#######################################################################
-<IfModule mod_cache.c>
-  CacheQuickHandler On
-  CacheLock On
-  CacheLockPath /tmp/mod_cache-lock
-  CacheIgnoreHeaders Set-Cookie
-  CacheDefaultExpire 600
-  CacheMaxExpire 3600
-  CacheIgnoreNoLastMod On
-
-  <IfModule mod_cache_disk.c>
+<IfModule mod_cache_disk.c>
     CacheRoot /var/cache/apache2/mod_cache_disk
-    CacheDirLength 2
-    CacheDirLevels 2
-    # Enable only for static asset types (by URL suffix)
-    CacheEnable disk "/"
-    CacheDisable "/wp-admin"
-    CacheDisable "/wp-login.php"
-    CacheDisable "/cart"
-    CacheDisable "/my-account"
-    CacheDisable "/checkout"
-    CacheDisable "/wc-api"
-    CacheDisable "/?add-to-cart="
-    # Don’t cache POSTs or cookied pages (Woo sessions)
-    CacheDisableMatch "expr=%{REQUEST_METHOD} =~ m#POST#"
-  </IfModule>
+    # Optional dev-friendly limits (uncomment if you enable caching in vhost)
+    # CacheDirLength 2
+    # CacheDirLevels  1
+    # CacheMaxFileSize 10485760
+    # CacheQuickHandler off
 </IfModule>
 
 #######################################################################
-# 7) ModSecurity — skip rules for static to save CPU
+# 6) ModSecurity – skip rules on static files to save CPU
 #######################################################################
 <IfModule security2_module>
-  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|avif|webp|css|js|woff2?)$">
-    SecRuleEngine Off
+  <LocationMatch "\.(?:ico|gif|jpe?g|png|svg|css|js|woff2?)$">
+      SecRuleEngine Off
   </LocationMatch>
 </IfModule>
 
 #######################################################################
-# 8) Small DoS safety valves (cheap protections)
+# 7) Proxy / FPM niceties (safe defaults; keep stricter in vhost if needed)
 #######################################################################
-<IfModule mod_reqtimeout.c>
-  RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+<IfModule proxy_module>
+  ProxyRequests Off
+  ProxyBadHeader Ignore
+  ProxyTimeout 120
 </IfModule>
 
-<IfModule mod_ratelimit.c>
-  # Example (disabled by default). Uncomment to throttle huge downloads:
-  # <LocationMatch "\.(?:zip|tar|gz|bz2|7z|mp4)$">
-  #   SetOutputFilter RATE_LIMIT
-  #   SetEnv rate-limit 512
-  # </LocationMatch>
+# Recommended when proxying to php-fpm to avoid chunking edge cases in dev
+<IfModule proxy_http_module>
+  ProxyErrorOverride Off
 </IfModule>
 
 ```
