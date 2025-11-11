@@ -12,6 +12,8 @@ RUN apt-get update && \
       sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
 
+RUN sed -i 's#^\s*IncludeOptional\s\+/etc/modsecurity/\*\.conf\s*$##' /etc/apache2/mods-available/security2.conf
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libapache2-mod-xsendfile \
   && a2enmod xsendfile
@@ -99,17 +101,19 @@ RUN apt-get update && \
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
 COPY modsecurity/modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY modsecurity/whitelist.conf /etc/modsecurity/whitelist.conf
+COPY modsecurity/pete-tuning.conf /etc/modsecurity/pete-tuning.conf
+
+# Ensure modsecurity cache dirs are writable by Apache
+RUN mkdir -p /var/cache/modsecurity \
+ && chown -R www-data:www-data /var/cache/modsecurity \
+ && chmod 750 /var/cache/modsecurity
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
 RUN a2enmod security2 \
- && rm -f /etc/apache2/mods-enabled/security2.conf \
  && a2enconf modsecurity \
  && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
- \
- # enable JSON output for the audit log
  && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
- \
- && apache2ctl configtest
+ && apache2ctl -t
 
 # ── make sure Apache can write its own logs ──────────────────────────────
 RUN set -e \

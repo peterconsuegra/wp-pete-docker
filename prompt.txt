@@ -272,6 +272,59 @@ ENTRYPOINT ["/usr/local/bin/pete_install.sh"]
 
 ========================================
 
+**php/development/php.ini**
+```
+; ===== Resources =====
+memory_limit = 512M              ; plugin requires ≥512M
+max_execution_time = 300
+max_input_time = 60
+max_input_vars = 6000            ; safer for Woo + big admin screens
+
+; uploads
+post_max_size = 256M
+upload_max_filesize = 256M
+
+; logging / visibility for dev
+expose_php = Off
+display_errors = Off             ; keep off, log instead
+log_errors = On
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+; optional: direct PHP error log to file inside container volume
+; error_log = /var/log/php/error.log
+
+; ===== OPcache (DEV, fast reloads) =====
+opcache.enable = 1
+opcache.enable_cli = 1
+opcache.validate_timestamps = 1  ; dev: always check timestamps
+opcache.revalidate_freq = 1
+opcache.file_update_protection = 0
+opcache.memory_consumption = 192 ; plenty for WP + plugins in dev
+opcache.interned_strings_buffer = 16
+opcache.max_accelerated_files = 100000
+opcache.save_comments = 1
+; JIT usually doesn’t help WordPress; keep it off explicitly
+opcache.jit = 0
+opcache.jit_buffer_size = 0
+
+; ===== Filesystem resolver speed =====
+realpath_cache_size = 4096K
+realpath_cache_ttl  = 600
+
+; ===== Sessions / output =====
+session.gc_probability = 1
+session.gc_divisor = 1000
+session.gc_maxlifetime = 28800
+output_buffering = 0
+
+; ===== Sane defaults for CLI tools & HTTP timeouts =====
+default_socket_timeout = 30
+; If you use Redis ext frequently in scripts, you can keep this shorter:
+; redis.pconnect.pooling_enabled = 1
+
+```
+
+========================================
+
 **db/Dockerfile**
 ```
 FROM mariadb:10.6
@@ -308,6 +361,8 @@ RUN apt-get update && \
       certbot python3-certbot-apache \
       sudo curl ca-certificates vim-tiny && \
     rm -rf /var/lib/apt/lists/*
+
+RUN sed -i 's#^\s*IncludeOptional\s\+/etc/modsecurity/\*\.conf\s*$##' /etc/apache2/mods-available/security2.conf
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libapache2-mod-xsendfile \
@@ -396,17 +451,19 @@ RUN apt-get update && \
 # ── Copy our Apache include that loads mod_security2 + CRS ───────────────────
 COPY modsecurity/modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY modsecurity/whitelist.conf /etc/modsecurity/whitelist.conf
+COPY modsecurity/pete-tuning.conf /etc/modsecurity/pete-tuning.conf
+
+# Ensure modsecurity cache dirs are writable by Apache
+RUN mkdir -p /var/cache/modsecurity \
+ && chown -R www-data:www-data /var/cache/modsecurity \
+ && chmod 750 /var/cache/modsecurity
 
 # ── Enable security2, drop any default, enable ours, turn engine ON, test syntax ─
 RUN a2enmod security2 \
- && rm -f /etc/apache2/mods-enabled/security2.conf \
  && a2enconf modsecurity \
  && sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf \
- \
- # enable JSON output for the audit log
  && echo 'SecAuditLogFormat JSON' >> /etc/modsecurity/modsecurity.conf \
- \
- && apache2ctl configtest
+ && apache2ctl -t
 
 # ── make sure Apache can write its own logs ──────────────────────────────
 RUN set -e \
@@ -478,27 +535,43 @@ CMD ["/usr/local/bin/start.sh"]
 
 ========================================
 
+**apache/modsecurity/pete-tuning.conf**
+```
+# apache/modsecurity/pete-tuning.conf  (minimal, widely compatible)
+
+# Large body windows for editors/imports
+SecRequestBodyAccess On
+SecRequestBodyLimit          1073741824
+SecRequestBodyNoFilesLimit   1073741824
+SecRequestBodyInMemoryLimit  33554432
+SecRequestBodyLimitAction    ProcessPartial
+
+# Generous PCRE recursion limits for page builders
+SecPcreMatchLimit            100000
+SecPcreMatchLimitRecursion   100000
+```
+
+========================================
+
 **apache/modsecurity/modsecurity-apache.conf**
 ```
-LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
+<IfModule security2_module>
+    SecRuleEngine On
+    SecTmpDir  /var/cache/modsecurity
+    SecDataDir /var/cache/modsecurity
+    SecRequestBodyAccess On
+    SecResponseBodyAccess Off
 
- <IfModule security2_module>
-     SecRuleEngine On
-     SecRequestBodyAccess On
-     SecResponseBodyAccess Off
-
-     Include /etc/modsecurity/modsecurity.conf
-
-     Include /etc/modsecurity/whitelist.conf
-
-     Include /etc/modsecurity/crs-setup.conf
-
-     IncludeOptional /etc/modsecurity/rules/*.conf
+    # Load base + your files + CRS in a single place
+    Include /etc/modsecurity/modsecurity.conf
+    Include /etc/modsecurity/pete-tuning.conf
+    Include /etc/modsecurity/whitelist.conf
+    Include /etc/modsecurity/crs-setup.conf
+    IncludeOptional /etc/modsecurity/rules/*.conf
 
     SecRequestBodyLimit        1073741824
     SecRequestBodyNoFilesLimit 1073741824
-
- </IfModule>
+</IfModule>
 ```
 
 ========================================
@@ -506,296 +579,77 @@ LoadModule security2_module /usr/lib/apache2/modules/mod_security2.so
 **apache/modsecurity/whitelist.conf**
 ```
 # =====================================================================
-# Pete Panel – ModSecurity whitelist (surgical false-positive fixes)
-# NOTE: Keep comments OUTSIDE quoted action lists. No backslashes inside quotes.
+# Pete Panel – ModSecurity whitelist (balanced)
+#   - Keep ModSecurity ON
+#   - Surgical removals for WordPress/Woo basics
+#   - Option B: remove OWASP CRS tags only for authenticated WRITE
+#     requests on admin/REST scopes (safer than engine OFF)
 # =====================================================================
 
-# -----------------------------
-# Baseline FP removals (global)
-# -----------------------------
+###############################################################################
+# 0) GLOBAL QUALITY-OF-LIFE / NOISE REDUCTION
+###############################################################################
 
-# Simple, unconditional removal of 920450 for WP REST
-SecRule REQUEST_URI "@rx ^/wp-json/" \
-  "id:1100203,phase:1,pass,nolog,ctl:ruleRemoveById=920450"
-
-SecRule REQUEST_BASENAME "@streq index.php" \
-  "id:1100204,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" \
-    "t:none,ctl:ruleRemoveById=920450"
-
+# Allow large REST/editor payloads (1 GiB)
 SecAction \
   "id:10000,phase:1,pass,nolog,\
+   setvar:tx.block_attack_anomaly_score=1,\
+   setvar:tx.inbound_anomaly_score_threshold=5"
+
+# Remove a few noisy generic rules globally (very conservative)
+SecAction \
+  "id:10001,phase:1,pass,nolog,\
    ctl:ruleRemoveById=953100,\
    ctl:ruleRemoveById=959100,\
    ctl:ruleRemoveById=980170"
 
-# -----------------------------
-# Pete internal paths (engine off)
-# -----------------------------
-SecRule REQUEST_URI "@beginsWith /wp-admin" \
-  "id:1000001,phase:1,pass,nolog,ctl:ruleEngine=Off"
+# Parse JSON when Content-Type advertises it
+SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+ "id:10090,phase:1,pass,nolog,ctl:requestBodyProcessor=JSON"
 
-SecRule REQUEST_URI "@beginsWith /admin/phpinfo" \
-  "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+###############################################################################
+# 1) BASELINE WORDPRESS/REST RELAXATIONS
+###############################################################################
 
-SecRule REQUEST_URI "@beginsWith /admin/phpinfo/view" \
-  "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /validate-pete" \
-  "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /pete_plugins_install" \
-  "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /pete_update" \
-  "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /update_post" \
-  "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /phpmyadmin" \
-  "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /phpmyinfo" \
-  "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "^/app[0-9]+/update_post$" \
-  "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /internal-certbot" \
-  "id:1000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /internal-reload" \
-  "id:1000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /pete_plugins" \
-  "id:10000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /oupdates" \
-  "id:10000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp_plugins" \
-  "id:10000013,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /pete_installers" \
-  "id:10000014,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp_global_options" \
-  "id:10000015,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /validate_site_json" \
-  "id:10000016,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /wp-json/pete/v1" \
-  "id:10000017,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-SecRule REQUEST_URI "@beginsWith /plugins" \
-  "id:10000018,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Pete dashboard rule (example specific)
-SecRule REQUEST_URI "@beginsWith /wordpress-importer" \
-  "id:910004,phase:1,pass,nolog,ctl:ruleRemoveById=200004"
-
-# -----------------------------
-# WooCommerce allow-list
-# -----------------------------
-
-# Engine off for Woo AJAX endpoints (?wc-ajax=...)
-SecRule QUERY_STRING "@contains wc-ajax=" \
-  "id:1000100,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Engine off for admin-ajax.php (some WC add-ons)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
-  "id:1000101,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Engine off for legacy wc-api callbacks
-SecRule QUERY_STRING "@contains wc-api=" \
-  "id:1000102,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# Surgical relaxations for specific wc-ajax actions
-SecRule QUERY_STRING "@rx \bwc-ajax=(update_order_review|checkout|apply_coupon|get_cart_totals)\b" \
-  "id:1000110,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=930120,ctl:ruleRemoveById=942430"
-
-# Surgical relaxations for wc-api payloads
-SecRule QUERY_STRING "@rx \bwc-api=\w+" \
-  "id:1000111,phase:1,pass,nolog,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160"
-
-# Allow methods beyond defaults
-SecAction \
- "id:1000112,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
-
-# -----------------------------
-# Core WordPress relaxations
-# -----------------------------
-
-# Admin AJAX – keep engine ON but remove noisy CRS rules
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
-  "id:1100100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=942430"
-
-# Heartbeat (quieter editing)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1100101,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@streq heartbeat" "t:none,ctl:ruleEngine=Off"
-
+# REST routes: reduce false positives in method override handling (920450)
 SecRule REQUEST_URI "@rx ^/wp-json/" \
   "id:1100200,phase:1,pass,nolog,\
    ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
    ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
    ctl:ruleRemoveById=920450"
 
-SecRule REQUEST_URI "@rx ^/index\.php$" "id:1100201,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" "t:none,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
-   ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
-   ctl:ruleRemoveById=920450"
+# index.php?rest_route=/wp/... form (percent-encoded route)
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:1100201,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" \
+    "t:none,\
+     ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS:X-HTTP-Method-Override,\
+     ctl:ruleRemoveTargetById=920450;REQUEST_HEADERS_NAMES,\
+     ctl:ruleRemoveById=920450"
 
-# REST writes – relax only content-like fields
-SecRule REQUEST_URI "@rx ^/(wp-json/|index\.php$)" "id:1100202,phase:2,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=941160;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content,ctl:ruleRemoveTargetById=942110;ARGS:content,ctl:ruleRemoveTargetById=941100;ARGS:excerpt,ctl:ruleRemoveTargetById=942100;ARGS:excerpt,ctl:ruleRemoveTargetById=941100;ARGS:blocks,ctl:ruleRemoveTargetById=942100;ARGS:blocks"
+# Admin AJAX – keep engine ON but remove noisy CRS rules often hit by builders
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:1100100,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=941100,\
+   ctl:ruleRemoveById=941160,\
+   ctl:ruleRemoveById=942100,\
+   ctl:ruleRemoveById=942110,\
+   ctl:ruleRemoveById=942430"
+
+# Heartbeat – quieter editing
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1100101,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@streq heartbeat" "t:none,ctl:ruleEngine=Off"
 
 # Media Library uploads
 SecRule REQUEST_URI "@endsWith /wp-admin/async-upload.php" \
-  "id:1100300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110,ctl:ruleRemoveById=930120"
-# ^ file path access relaxation included
+  "id:1100300,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=941100,\
+   ctl:ruleRemoveById=941160,\
+   ctl:ruleRemoveById=942100,\
+   ctl:ruleRemoveById=942110,\
+   ctl:ruleRemoveById=930120"
 
-# Search (?s=) – avoid SQLi FPs on natural queries
-SecRule REQUEST_METHOD "@streq POST" "id:1100400,phase:2,pass,nolog,chain"
-  SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages/[0-9]+/autosaves($|/)" "t:none,chain"
-  SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,ctl:ruleRemoveById=932370,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180"
-
-
-# Preview & Customizer – long/b64 content
-SecRule REQUEST_URI "@endsWith /wp-admin/post.php" "id:1100500,phase:1,pass,nolog,chain"
-  SecRule ARGS:preview "@streq true" "t:none,ctl:ruleRemoveTargetById=941100;ARGS:content,ctl:ruleRemoveTargetById=942100;ARGS:content"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/customize.php" \
-  "id:1100501,phase:1,pass,nolog,ctl:ruleRemoveTargetById=941100;ARGS,ctl:ruleRemoveTargetById=942100;ARGS"
-
-# Optional: wp-cron (usually internal)
-SecRule REQUEST_URI "@endsWith /wp-cron.php" \
-  "id:1100600,phase:1,pass,nolog,ctl:ruleEngine=Off"
-
-# -----------------------------
-# Popular plugins/builders
-# -----------------------------
-
-# WooCommerce extras (surgical, REST/admin-ajax variants handled above)
-SecRule REQUEST_URI "@contains /wc-api/" \
-  "id:1200100,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
-
-# Contact Form 7 (admin-ajax)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200200,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@rx ^wpcf7|contact\-form\-7" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=942100,ctl:ruleRemoveById=942110"
-
-# Elementor (REST + admin-ajax)
-SecRule REQUEST_URI "@rx ^/wp-json/elementor/v1/" \
-  "id:1200300,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200301,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@rx ^elementor_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Divi Builder (admin-ajax)
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200400,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@contains et_fb_" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Yoast SEO (REST)
-SecRule REQUEST_URI "@rx ^/wp-json/yoast/v1/" \
-  "id:1200500,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-# Query Monitor (REST + admin-ajax)
-SecRule REQUEST_URI "@rx ^/wp-json/qm/" \
-  "id:1200600,phase:1,pass,nolog,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200601,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@streq query-monitor" "t:none,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=942100"
-
-
-# Gutenberg Templates / Template Parts saves (JSON) – relax noisy rules only on content-like fields
-# Also relax REQUEST_BODY to cover large block JSON that still trips 9322xx/9411xx.
-
-# Native /wp-json/... form
-SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/(templates|template-parts)(/|$)" \
-  "id:1100210,phase:2,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
-     ctl:ruleRemoveTargetById=941100;ARGS:content,\
-     ctl:ruleRemoveTargetById=941160;ARGS:content,\
-     ctl:ruleRemoveTargetById=941180;ARGS:content,\
-     ctl:ruleRemoveTargetById=941140;ARGS:content,\
-     ctl:ruleRemoveTargetById=942100;ARGS:content,\
-     ctl:ruleRemoveTargetById=942110;ARGS:content,\
-     ctl:ruleRemoveTargetById=932230;ARGS:content,\
-     ctl:ruleRemoveTargetById=932235;ARGS:content,\
-     ctl:ruleRemoveTargetById=932250;ARGS:content,\
-     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-     ctl:ruleRemoveTargetById=941100;ARGS:source,\
-     ctl:ruleRemoveTargetById=941160;ARGS:source,\
-     ctl:ruleRemoveTargetById=942100;ARGS:source,\
-     ctl:ruleRemoveTargetById=942110;ARGS:source,\
-     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
-
-# index.php?rest_route=/wp/v2/... form
-SecRule REQUEST_URI "@streq /index.php" \
-  "id:1100211,phase:2,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2F(templates|template\-parts)(%2F|&|$)" "t:none,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-    SecRule &REQUEST_HEADERS:Content-Type "@ge 1" "t:none,\
-     ctl:ruleRemoveTargetById=941100;ARGS:content,\
-     ctl:ruleRemoveTargetById=941160;ARGS:content,\
-     ctl:ruleRemoveTargetById=941180;ARGS:content,\
-     ctl:ruleRemoveTargetById=941140;ARGS:content,\
-     ctl:ruleRemoveTargetById=942100;ARGS:content,\
-     ctl:ruleRemoveTargetById=942110;ARGS:content,\
-     ctl:ruleRemoveTargetById=932230;ARGS:content,\
-     ctl:ruleRemoveTargetById=932235;ARGS:content,\
-     ctl:ruleRemoveTargetById=932250;ARGS:content,\
-     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-     ctl:ruleRemoveTargetById=941100;ARGS:source,\
-     ctl:ruleRemoveTargetById=941160;ARGS:source,\
-     ctl:ruleRemoveTargetById=942100;ARGS:source,\
-     ctl:ruleRemoveTargetById=942110;ARGS:source,\
-     ctl:ruleRemoveTargetById=941100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942100;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942110;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=932260;REQUEST_BODY"
-
-# =====================================================================
-# End of whitelist
-# =====================================================================
-
-# b) index.php?rest_route=/wp/... form (percent-encoded route)
-SecRule REQUEST_BASENAME "@streq index.php" \
-  "id:1100199,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2F" "t:none,chain"
-  SecRule REQUEST_HEADERS_NAMES "@contains x-http-method-override" \
-    "t:lowercase,ctl:ruleRemoveById=920450"
-
-# Also handle the index.php?rest_route= form (percent-encoded)
-SecRule REQUEST_METHOD "@streq POST" "id:1100401,phase:2,pass,nolog,chain"
-  SecRule REQUEST_BASENAME "@streq index.php" "t:none,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages%2F[0-9]+%2Fautosaves" "t:none,ctl:ruleRemoveById=932370,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180"
-
-# Parse JSON when Content-Type advertises it (mod_security2 + YAJL)
-SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
- "id:10090,phase:1,pass,nolog,ctl:requestBodyProcessor=JSON"
-
-# /wp-json/wp/v2/pages (create/update) – relax noisy CRS rules on content-like fields
-# Relax noisy CRS rules only on Gutenberg "pages" writable fields (and JSON body)
+# Gutenberg: pages create/update – relax noisy rules only on content-like fields
 SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
   "id:1100220,phase:2,pass,nolog,chain"
   SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
@@ -810,42 +664,16 @@ SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-    \
     ctl:ruleRemoveTargetById=932230;ARGS:content,\
     ctl:ruleRemoveTargetById=932235;ARGS:content,\
     ctl:ruleRemoveTargetById=932240;ARGS:content,\
     ctl:ruleRemoveTargetById=932250;ARGS:content,\
     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-    ctl:ruleRemoveTargetById=932370;ARGS:content,\
-    ctl:ruleRemoveTargetById=941100;ARGS:content,\
-    ctl:ruleRemoveTargetById=941140;ARGS:content,\
-    ctl:ruleRemoveTargetById=941160;ARGS:content,\
-    ctl:ruleRemoveTargetById=941180;ARGS:content,\
-    \
-    ctl:ruleRemoveTargetById=932230;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932235;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932240;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932250;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932260;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932370;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941100;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941140;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941160;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941180;ARGS:content.raw,\
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=941160;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=942100;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=942110;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=941100;ARGS:excerpt.raw, \
-    ctl:ruleRemoveTargetById=941160;ARGS:excerpt.raw, \
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:title, \
-    ctl:ruleRemoveTargetById=941160;ARGS:title, \
-    ctl:ruleRemoveTargetById=941100;ARGS:title.raw, \
-    ctl:ruleRemoveTargetById=941160;ARGS:title.raw, \
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:blocks, \
+    ctl:ruleRemoveTargetById=941100;ARGS:title,\
+    ctl:ruleRemoveTargetById=941160;ARGS:title,\
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt,\
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt,\
+    ctl:ruleRemoveTargetById=941100;ARGS:blocks,\
     ctl:ruleRemoveTargetById=941160;ARGS:blocks"
 
 # index.php?rest_route=/wp/v2/pages… (encoded form)
@@ -864,177 +692,426 @@ SecRule REQUEST_URI "@streq /index.php" \
     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
     ctl:ruleRemoveTargetById=941180;REQUEST_BODY,\
-    \
     ctl:ruleRemoveTargetById=932230;ARGS:content,\
     ctl:ruleRemoveTargetById=932235;ARGS:content,\
     ctl:ruleRemoveTargetById=932240;ARGS:content,\
     ctl:ruleRemoveTargetById=932250;ARGS:content,\
     ctl:ruleRemoveTargetById=932260;ARGS:content,\
-    ctl:ruleRemoveTargetById=932370;ARGS:content,\
-    ctl:ruleRemoveTargetById=941100;ARGS:content,\
-    ctl:ruleRemoveTargetById=941140;ARGS:content,\
-    ctl:ruleRemoveTargetById=941160;ARGS:content,\
-    ctl:ruleRemoveTargetById=941180;ARGS:content,\
-    \
-    ctl:ruleRemoveTargetById=932230;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932235;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932240;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932250;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932260;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=932370;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941100;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941140;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941160;ARGS:content.raw,\
-    ctl:ruleRemoveTargetById=941180;ARGS:content.raw,\
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=941160;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=942100;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=942110;ARGS:excerpt, \
-    ctl:ruleRemoveTargetById=941100;ARGS:excerpt.raw, \
-    ctl:ruleRemoveTargetById=941160;ARGS:excerpt.raw, \
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:title, \
-    ctl:ruleRemoveTargetById=941160;ARGS:title, \
-    ctl:ruleRemoveTargetById=941100;ARGS:title.raw, \
-    ctl:ruleRemoveTargetById=941160;ARGS:title.raw, \
-    \
-    ctl:ruleRemoveTargetById=941100;ARGS:blocks, \
+    ctl:ruleRemoveTargetById=941100;ARGS:title,\
+    ctl:ruleRemoveTargetById=941160;ARGS:title,\
+    ctl:ruleRemoveTargetById=941100;ARGS:excerpt,\
+    ctl:ruleRemoveTargetById=941160;ARGS:excerpt,\
+    ctl:ruleRemoveTargetById=941100;ARGS:blocks,\
     ctl:ruleRemoveTargetById=941160;ARGS:blocks"
 
-  # Gutenberg PAGES via index.php?rest_route= (encoded)
-SecRule REQUEST_URI "@streq /index.php" \
-  "id:1101221,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages(?:%2F[0-9]+)?(?:%2F(?:autosaves|revisions(?:%2F[0-9]+)?))?(?:&|$)" "t:none,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" "t:none,\
-    ctl:requestBodyProcessor=JSON,\
-    ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
-    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
-    setvar:tx.inbound_anomaly_score_threshold=20"
+###############################################################################
+# 2) WOOCOMMERCE ESSENTIALS
+###############################################################################
 
-# Gutenberg PAGES via /wp-json/wp/v2/pages (native)
-SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
-  "id:1101220,phase:1,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" "t:none,chain"
-  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" "t:none,\
-    ctl:requestBodyProcessor=JSON,\
-    ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
-    ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
-    ctl:ruleRemoveTargetById=932230;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932240;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932250;REQUEST_BODY,\
-    ctl:ruleRemoveTargetById=932260;REQUEST_BODY,\
-    setvar:tx.inbound_anomaly_score_threshold=20"
+# Engine off for Woo AJAX endpoints (?wc-ajax=...)
+SecRule QUERY_STRING "@contains wc-ajax=" \
+  "id:1000100,phase:1,pass,nolog,ctl:ruleEngine=Off"
 
+# Engine off for admin-ajax.php (some WC add-ons)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:1000101,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Engine off for legacy wc-api callbacks
+SecRule QUERY_STRING "@contains wc-api=" \
+  "id:1000102,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+# Surgical relaxations for specific wc-ajax actions
+SecRule QUERY_STRING "@rx \bwc-ajax=(update_order_review|checkout|apply_coupon|get_cart_totals)\b" \
+  "id:1000110,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=942100,\
+   ctl:ruleRemoveById=942110,\
+   ctl:ruleRemoveById=941100,\
+   ctl:ruleRemoveById=941160,\
+   ctl:ruleRemoveById=930120,\
+   ctl:ruleRemoveById=942430"
+
+# Allow methods beyond defaults (Woo/REST often use more than GET/POST)
+SecAction \
+ "id:1000112,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE'"
+
+###############################################################################
+# 3) PETE PANEL INTERNAL PATHS (ENGINE OFF – SAFE, LOCAL ADMIN ONLY)
+###############################################################################
+SecRule REQUEST_URI "@beginsWith /admin/phpinfo"          "id:1000002,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /admin/phpinfo/view"     "id:1000003,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /validate-pete"          "id:1000004,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_plugins_install"   "id:1000005,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_update"            "id:1000006,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /update_post"            "id:1000007,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpmyadmin"             "id:1000008,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /phpmyinfo"              "id:1000009,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "^/app[0-9]+/update_post$"            "id:1000010,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /internal-certbot"       "id:1000011,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /internal-reload"        "id:1000012,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_plugins"           "id:1000013,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /oupdates"               "id:1000014,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /wp_plugins"             "id:1000015,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /pete_installers"        "id:1000016,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /wp_global_options"      "id:1000017,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /validate_site_json"     "id:1000018,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /wp-json/pete/v1"        "id:1000019,phase:1,pass,nolog,ctl:ruleEngine=Off"
+SecRule REQUEST_URI "@beginsWith /plugins"                "id:1000020,phase:1,pass,nolog,ctl:ruleEngine=Off"
+
+###############################################################################
+# 4) OPTION B (BALANCED): AUTHENTICATED WRITE REQUESTS
+#    Remove OWASP_CRS tags (only) when authenticated in admin/REST scopes
+###############################################################################
+
+# Scope flags: admin/REST endpoints
+SecRule REQUEST_URI "@rx ^/(wp-admin/|wp-json/)" \
+  "id:210200,phase:1,pass,nolog,setvar:tx.pete_wp_scope=1"
 SecRule REQUEST_BASENAME "@streq index.php" \
-  "id:1109001,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fwp%2Fv2%2Fpages(?:%2F[0-9]+)?(?:%2F(?:autosaves|revisions(?:%2F[0-9]+)?))?(?:&|$)" \
-    "t:none,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
-    "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180,\
-     ctl:ruleRemoveById=932230,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=932240,ctl:ruleRemoveById=932250,ctl:ruleRemoveById=932260,\
-     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
-     ctl:ruleRemoveById=949110"
+  "id:210201,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@contains rest_route=" \
+    "t:none,setvar:tx.pete_wp_scope=1"
 
-# 2) Native WP-JSON route
-SecRule REQUEST_URI "@rx ^/wp-json/wp/v2/pages(?:/|$)" \
-  "id:1109002,phase:1,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
-    "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941180,\
-     ctl:ruleRemoveById=932230,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=932240,ctl:ruleRemoveById=932250,ctl:ruleRemoveById=932260,\
-     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:title.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt,ctl:ruleRemoveTargetByTag=attack-xss;ARGS:excerpt.raw,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:blocks,\
-     ctl:ruleRemoveById=949110"
+# Method flag: write-only
+SecRule REQUEST_METHOD "@pm POST PUT PATCH DELETE" \
+  "id:210202,phase:1,pass,nolog,setvar:tx.pete_write=1"
 
-# 1) admin-ajax.php with Divi import actions (action contains et_core, et_builder, et_import)
-SecRule REQUEST_BASENAME "@streq admin-ajax.php" \
-  "id:1209001,phase:1,pass,nolog,chain"
-  SecRule ARGS:action "@rx (et_core|et_builder|et_import|et_layout|divi_import|et_save_layout)" \
-    "t:none,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT" \
-    "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:layout,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:data,\
-     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=933210,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941200,ctl:ruleRemoveById=941350,ctl:ruleRemoveById=941400,ctl:ruleRemoveById=942190,ctl:ruleRemoveById=942550,\
-     ctl:ruleRemoveById=949110"
+# Signal 1: WordPress logged-in cookie
+SecRule REQUEST_COOKIES_NAMES "@rx ^wordpress_logged_in_" \
+  "id:210210,phase:1,pass,nolog,chain"
+  SecRule TX:pete_wp_scope "@eq 1" "t:none,chain"
+  SecRule TX:pete_write "@eq 1" \
+    "t:none,\
+     ctl:ruleRemoveByTag=OWASP_CRS,\
+     ctl:ruleRemoveByTag=paranoia-level/1,\
+     ctl:ruleRemoveByTag=paranoia-level/2,\
+     ctl:ruleRemoveByTag=paranoia-level/3,\
+     ctl:ruleRemoveByTag=paranoia-level/4"
 
-# 2) WP-JSON or custom Divi REST endpoints (common vendor patterns)
-SecRule REQUEST_URI "@rx /wp-json/(?:et_builder|et_core|divi|et-)?(layouts|builder|import|export|layout|et_core)/?" \
-  "id:1209002,phase:1,pass,nolog,chain"
-  SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
-    "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:content,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:layout,\
-     ctl:ruleRemoveTargetByTag=attack-xss;ARGS:data,\
-     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=933210,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,ctl:ruleRemoveById=941200,ctl:ruleRemoveById=941350,ctl:ruleRemoveById=941400,ctl:ruleRemoveById=942190,ctl:ruleRemoveById=942550,\
-     setvar:tx.inbound_anomaly_score_threshold=20"
+# Signal 2: WP REST nonce header (used by editor/builders)
+SecRule REQUEST_HEADERS:X-WP-Nonce "!@streq ''" \
+  "id:210211,phase:1,pass,nolog,chain"
+  SecRule TX:pete_wp_scope "@eq 1" "t:none,chain"
+  SecRule TX:pete_write "@eq 1" \
+    "t:none,\
+     ctl:ruleRemoveByTag=OWASP_CRS,\
+     ctl:ruleRemoveByTag=paranoia-level/1,\
+     ctl:ruleRemoveByTag=paranoia-level/2,\
+     ctl:ruleRemoveByTag=paranoia-level/3,\
+     ctl:ruleRemoveByTag=paranoia-level/4"
 
-# 3) Extra defensive narrow rule: if request body shows Divi markers (et_pb_ etc.) then remove target for REQUEST_BODY
-SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
-  "id:1209003,phase:1,pass,nolog,chain"
-  SecRule REQUEST_BODY "@rx et_pb_|et-core|et_builder|et-core|et_layout|divi" \
-    "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveTargetByTag=attack-xss;REQUEST_BODY,\
-     ctl:ruleRemoveById=932235,ctl:ruleRemoveById=941140,ctl:ruleRemoveById=941160,\
-     setvar:tx.inbound_anomaly_score_threshold=25"
+# Signal 3: API calls with Authorization (Basic/Bearer)
+SecRule REQUEST_HEADERS:Authorization "^(?:Basic|Bearer)\\s" \
+  "id:210212,phase:1,pass,nolog,chain"
+  SecRule TX:pete_wp_scope "@eq 1" "t:none,chain"
+  SecRule TX:pete_write "@eq 1" \
+    "t:none,\
+     ctl:ruleRemoveByTag=OWASP_CRS,\
+     ctl:ruleRemoveByTag=paranoia-level/1,\
+     ctl:ruleRemoveByTag=paranoia-level/2,\
+     ctl:ruleRemoveByTag=paranoia-level/3,\
+     ctl:ruleRemoveByTag=paranoia-level/4"
 
+###############################################################################
+# 5) POPULAR BUILDERS / TOOLS – LIGHTWEIGHT, NON-REDUNDANT HELPERS
+###############################################################################
+
+# Contact Form 7 (admin-ajax)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" "id:1200200,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@rx ^wpcf7|contact\-form\-7" "t:none,\
+    ctl:ruleRemoveById=941100,\
+    ctl:ruleRemoveById=941160,\
+    ctl:ruleRemoveById=942100,\
+    ctl:ruleRemoveById=942110"
+
+# Elementor REST
+SecRule REQUEST_URI "@rx ^/wp-json/elementor/v1/" \
+  "id:1200300,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=941100,\
+   ctl:ruleRemoveById=942100"
+
+# Divi – REST portability/import endpoint (keep minimal; Option B covers auth writes)
 SecRule REQUEST_BASENAME "@streq index.php" \
   "id:1209010,phase:1,pass,nolog,chain"
   SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fdivi%2Fv1%2Fportability%2Fimport($|&)|(^|&)rest_route=/divi/v1/portability/import($|&)" \
     "t:none,chain"
   SecRule REQUEST_METHOD "@pm POST PUT PATCH" \
     "t:none,ctl:requestBodyProcessor=JSON,\
-     ctl:ruleRemoveTargetById=932235;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=933210;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941140;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941160;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941200;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941350;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=941400;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942190;REQUEST_BODY,\
-     ctl:ruleRemoveTargetById=942550;REQUEST_BODY,\
-     ctl:ruleRemoveById=949110,\
-     ctl:ruleRemoveTargetById=932235;ARGS:content,ctl:ruleRemoveTargetById=932235;ARGS:layout,ctl:ruleRemoveTargetById=932235;ARGS:data,\
-     ctl:ruleRemoveTargetById=941140;ARGS:content,ctl:ruleRemoveTargetById=941160;ARGS:content,ctl:ruleRemoveTargetById=941200;ARGS:content,\
-     setvar:tx.inbound_anomaly_score_threshold=30"
+     ctl:ruleRemoveById=949110"
 
+###############################################################################
+# 6) OPTIONAL: QUIETER PREVIEW/CUSTOMIZER (useful for editors)
+###############################################################################
+
+# Preview
+SecRule REQUEST_URI "@endsWith /wp-admin/post.php" "id:1100500,phase:1,pass,nolog,chain"
+  SecRule ARGS:preview "@streq true" "t:none,\
+   ctl:ruleRemoveTargetById=941100;ARGS:content,\
+   ctl:ruleRemoveTargetById=942100;ARGS:content"
+
+# Customizer
+SecRule REQUEST_URI "@endsWith /wp-admin/customize.php" \
+  "id:1100501,phase:1,pass,nolog,\
+   ctl:ruleRemoveTargetById=941100;ARGS,\
+   ctl:ruleRemoveTargetById=942100;ARGS"
+
+###############################################################################
+# END
+###############################################################################
+
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:1209015,phase:1,pass,nolog,chain"
+  SecRule ARGS:action "@streq et_core_portability_import" \
+    "t:none,\
+     ctl:requestBodyProcessor=Multipart,\
+     ctl:ruleRemoveById=200002,\
+     ctl:ruleRemoveById=949110"
+
+# --------- Divi import via index.php?rest_route=/divi/v1/portability/import ----------
+# Flag the request as a Divi import (route + method + auth)
 SecRule REQUEST_BASENAME "@streq index.php" \
   "id:1209011,phase:1,pass,nolog,chain"
-  SecRule QUERY_STRING "@rx (^|&)rest_route=%2Fdivi%2Fv1%2Fportability%2Fimport($|&)|(^|&)rest_route=/divi/v1/portability/import($|&)" \
+  SecRule QUERY_STRING "@rx (^|&)rest_route=(%2F|/)divi(%2F|/)v1(%2F|/)portability(%2F|/)import($|&)" \
     "t:none,chain"
-  SecRule &ARGS:_wpnonce|REQUEST_COOKIES:wordpress_logged_in_ "@gt 0" \
+  SecRule REQUEST_METHOD "@streq POST" "t:none,chain"
+  SecRule &REQUEST_COOKIES:wordpress_logged_in_|&ARGS:_wpnonce "@gt 0" \
+    "t:none,setvar:tx.pete_divi_import=1"
+
+# If multipart upload: force multipart processor before CRS & drop noisy IDs
+SecRule TX:pete_divi_import "@eq 1" \
+  "id:1209012,phase:1,pass,nolog,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains multipart/form-data" \
     "t:none,\
+     ctl:requestBodyProcessor=Multipart,\
+     ctl:ruleRemoveById=949110,\
      ctl:ruleRemoveById=200002"
+
+# If JSON payload: force JSON processor before CRS & drop same IDs
+SecRule TX:pete_divi_import "@eq 1" \
+  "id:1209013,phase:1,pass,nolog,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+    "t:none,\
+     ctl:requestBodyProcessor=JSON,\
+     ctl:ruleRemoveById=949110,\
+     ctl:ruleRemoveById=200002"
+
+# (OPTIONAL, only if audit shows them firing on this endpoint)
+ SecRule TX:pete_divi_import "@eq 1" \
+   "id:1209014,phase:1,pass,nolog,\
+    ctl:ruleRemoveById=920420,\
+    ctl:ruleRemoveById=942430"
+
+
+###############################################################################
+# A) Heuristic admin-ish writes (no WP changes)
+#    - Logged-in + admin or REST scope + write method (+ REST nonce)
+#    - Disable only the listed CRS IDs: 951190, 951210, 951220, 951250, 200002
+###############################################################################
+
+# Flags
+SecRule REQUEST_COOKIES_NAMES "@rx ^wordpress_logged_in_" \
+  "id:310000,phase:1,pass,nolog,setvar:tx.wp_logged_in=1"
+
+SecRule REQUEST_URI "@rx ^/wp-admin/" \
+  "id:310001,phase:1,pass,nolog,setvar:tx.wp_admin_scope=1"
+
+SecRule REQUEST_URI "@rx ^/wp-json/" \
+  "id:310002,phase:1,pass,nolog,setvar:tx.wp_rest_scope=1"
+
+SecRule REQUEST_METHOD "@pm POST PUT PATCH DELETE" \
+  "id:310003,phase:1,pass,nolog,setvar:tx.wp_write=1"
+
+# Admin scope: logged-in + admin path + write
+SecRule TX:wp_logged_in "@eq 1" \
+  "id:310010,phase:1,pass,nolog,chain"
+  SecRule TX:wp_admin_scope "@eq 1" "t:none,chain"
+  SecRule TX:wp_write "@eq 1" \
+    "t:none,\
+     ctl:ruleRemoveById=951190,\
+     ctl:ruleRemoveById=951210,\
+     ctl:ruleRemoveById=951220,\
+     ctl:ruleRemoveById=951250,\
+     ctl:ruleRemoveById=200002"
+
+# REST scope: logged-in + REST path + write + nonce header present
+SecRule TX:wp_logged_in "@eq 1" \
+  "id:310011,phase:1,pass,nolog,chain"
+  SecRule TX:wp_rest_scope "@eq 1" "t:none,chain"
+  SecRule TX:wp_write "@eq 1" "t:none,chain"
+  SecRule REQUEST_HEADERS:X-WP-Nonce "!@streq ''" \
+    "t:none,\
+     ctl:ruleRemoveById=951190,\
+     ctl:ruleRemoveById=951210,\
+     ctl:ruleRemoveById=951220,\
+     ctl:ruleRemoveById=951250,\
+     ctl:ruleRemoveById=200002"
+
+
+###############################################################################
+# Divi – route-only relaxations (surgical, low blast radius)
+# Place AFTER existing Divi helpers
+###############################################################################
+
+# Flag: logged-in user
+SecRule REQUEST_COOKIES_NAMES "@rx ^wordpress_logged_in_" \
+  "id:131000,phase:1,pass,nolog,setvar:tx.wp_logged_in=1"
+
+# ---------- (1) Divi Frontend Builder: /?page_id=..&et_fb=1 ----------
+# When the visual builder is active, relax the protocol/URI validator FPs.
+SecRule TX:wp_logged_in "@eq 1" \
+  "id:131010,phase:1,pass,nolog,chain"
+  SecRule ARGS:et_fb "@streq 1" \
+    "t:none,\
+     ctl:ruleRemoveById=951190,\
+     ctl:ruleRemoveById=951210,\
+     ctl:ruleRemoveById=951220,\
+     ctl:ruleRemoveById=951250"
+
+# (Optional) Also catch the app window toggle Divi uses
+SecRule TX:wp_logged_in "@eq 1" \
+  "id:131011,phase:1,pass,nolog,chain"
+  SecRule ARGS:app_window "!@streq ''" \
+    "t:none,\
+     ctl:ruleRemoveById=951190,\
+     ctl:ruleRemoveById=951210,\
+     ctl:ruleRemoveById=951220,\
+     ctl:ruleRemoveById=951250"
+
+# ---------- (2) Divi Portability Import: POST body handling ----------
+# Flag route (both pretty and rest_route forms)
+SecRule REQUEST_URI "@rx ^/wp-json/divi/v1/portability/import$" \
+  "id:131020,phase:1,pass,nolog,setvar:tx.pete_divi_import_route=1"
+
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:131021,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=(%2F|/)divi(%2F|/)v1(%2F/)portability(%2F/)import($|&)" \
+    "t:none,setvar:tx.pete_divi_import_route=1"
+
+# We only care for WRITE methods
+SecRule REQUEST_METHOD "@streq POST" \
+  "id:131022,phase:1,pass,nolog,setvar:tx.pete_divi_import_write=1"
+
+# If Divi import WRITE – always select the proper body processor EARLY
+# (some Divi uploads come as multipart, others as JSON; occasionally octet-stream)
+SecRule TX:pete_divi_import_route "@eq 1" \
+  "id:131023,phase:1,pass,nolog,chain"
+  SecRule TX:pete_divi_import_write "@eq 1" \
+    "t:none,\
+     ctl:requestBodyProcessor=Multipart"
+
+# If it’s clearly JSON, switch to JSON (wins over previous ctl)
+SecRule TX:pete_divi_import_route "@eq 1" \
+  "id:131024,phase:1,pass,nolog,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+    "t:none,ctl:requestBodyProcessor=JSON"
+
+# Drop the strict multipart validation FP no matter the MIME on this route
+# (this is the one you still see firing)
+SecRule TX:pete_divi_import_route "@eq 1" \
+  "id:131025,phase:1,pass,nolog,chain"
+  SecRule TX:pete_divi_import_write "@eq 1" \
+    "t:none,ctl:ruleRemoveById=200002"
+
+# Keep the previous Divi helper (949110) but ensure it also applies here
+SecRule TX:pete_divi_import_route "@eq 1" \
+  "id:131026,phase:1,pass,nolog,chain"
+  SecRule TX:pete_divi_import_write "@eq 1" \
+    "t:none,ctl:ruleRemoveById=949110"
+
+# (Optional hardening) Require either logged-in or REST nonce on this route
+SecRule TX:pete_divi_import_route "@eq 1" \
+  "id:131027,phase:1,pass,nolog,chain"
+  SecRule TX:pete_divi_import_write "@eq 1" "t:none,chain"
+  SecRule &REQUEST_COOKIES:wordpress_logged_in_|REQUEST_HEADERS:X-WP-Nonce "@gt 0" \
+    "t:none"
+
+###############################################################################
+# Divi import – bulletproof route matchers (pretty + rest_route form)
+# Disable 200002 and force a sane body processor regardless of headers.
+###############################################################################
+
+# A) Pretty REST route: /wp-json/divi/v1/portability/import
+SecRule REQUEST_URI "@streq /wp-json/divi/v1/portability/import" \
+  "id:9002003,phase:1,pass,nolog,\
+   ctl:ruleRemoveById=200002,\
+   ctl:requestBodyProcessor=Multipart"
+
+# B) index.php?rest_route=/divi/v1/portability/import  (encoded or not)
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:9002002,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=(%2F|/)divi(%2F|/)v1(%2F|/)portability(%2F|/)import($|&)" \
+    "t:none,\
+     ctl:ruleRemoveById=200002,\
+     ctl:requestBodyProcessor=Multipart"
+
+# If Divi sends JSON instead of multipart, swap processor (wins over previous ctl)
+SecRule REQUEST_URI "@streq /wp-json/divi/v1/portability/import" \
+  "id:9002004,phase:1,pass,nolog,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+    "t:none,ctl:requestBodyProcessor=JSON"
+
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:9002005,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@contains rest_route=/divi/v1/portability/import" \
+    "t:none,chain"
+  SecRule REQUEST_HEADERS:Content-Type "@contains application/json" \
+    "t:none,ctl:requestBodyProcessor=JSON"
+
+
+###############################################################################
+# Multipart safety net for logged-in WP editor/workflows (Divi, etc.)
+###############################################################################
+
+# Flag multipart requests and force the multipart processor early
+SecRule REQUEST_HEADERS:Content-Type "@contains multipart/form-data" \
+  "id:500100,phase:1,pass,nolog,setvar:tx.is_multipart=1,ctl:requestBodyProcessor=Multipart"
+
+# Flags for 'authenticated editor' context
+SecRule REQUEST_COOKIES_NAMES "@rx ^wordpress_logged_in_" \
+  "id:500101,phase:1,pass,nolog,setvar:tx.wp_logged_in=1"
+
+SecRule REQUEST_HEADERS:X-WP-Nonce "!@streq ''" \
+  "id:500102,phase:1,pass,nolog,setvar:tx.wp_nonce=1"
+
+# If multipart + (logged-in OR has REST nonce) -> drop the strict parser FP (200002)
+SecRule TX:is_multipart "@eq 1" \
+  "id:500103,phase:1,pass,nolog,chain"
+  SecRule TX:wp_logged_in|TX:wp_nonce "@eq 1" \
+    "t:none,ctl:ruleRemoveById=200002"
+
+# Always quiet 200002 on admin-ajax (many builders post multipart here)
+SecRule REQUEST_URI "@endsWith /wp-admin/admin-ajax.php" \
+  "id:500104,phase:1,pass,nolog,ctl:requestBodyProcessor=Multipart,ctl:ruleRemoveById=200002"
+
+# Divi Visual Builder saves via front-end (?et_fb=1) with multipart bodies
+SecRule REQUEST_BASENAME "@streq index.php" \
+  "id:500105,phase:1,pass,nolog,chain"
+  SecRule ARGS:et_fb "@streq 1" \
+    "t:none,ctl:requestBodyProcessor=Multipart,ctl:ruleRemoveById=200002"
+
+
+###############################################################################
+# Divi portability import - fully trusted admin route (skip body parsing)
+# Applies to both "pretty" and index.php?rest_route= forms, when authenticated
+###############################################################################
+
+# Helper: signal logged-in or nonce
+SecRule REQUEST_COOKIES_NAMES "@rx ^wordpress_logged_in_" \
+  "id:600100,phase:1,pass,nolog,setvar:tx.wp_auth=1"
+SecRule REQUEST_HEADERS:X-WP-Nonce "!@streq ''" \
+  "id:600101,phase:1,pass,nolog,setvar:tx.wp_auth=1"
+
+# A) Pretty route: /wp-json/divi/v1/portability/import
+SecRule REQUEST_URI "@streq /wp-json/divi/v1/portability/import" \
+  "id:600110,phase:1,pass,nolog,chain"
+  SecRule TX:wp_auth "@eq 1" \
+    "t:none,ctl:requestBodyAccess=Off,ctl:ruleEngine=Off"
+
+# B) index.php?rest_route=/divi/v1/portability/import
+SecRule REQUEST_URI "@streq /index.php" \
+  "id:600111,phase:1,pass,nolog,chain"
+  SecRule QUERY_STRING "@rx (^|&)rest_route=(%2F|/)divi(%2F|/)v1(%2F|/)portability(%2F|/)import($|&)" \
+    "t:none,chain"
+  SecRule TX:wp_auth "@eq 1" \
+    "t:none,ctl:requestBodyAccess=Off,ctl:ruleEngine=Off"
+
 ```
 
