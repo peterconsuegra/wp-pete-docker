@@ -2,6 +2,7 @@
 # Core security & env files
 # =========================
 .env
+prompt.txt
 !.env.example
 !.env.sample
 !Pete/.env.example
