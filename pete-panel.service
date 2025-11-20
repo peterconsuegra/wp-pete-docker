@@ -1,18 +1,26 @@
 [Unit]
-Description=Pete Panel - Docker Compose stack
+Description=Pete Panel - Docker Compose stack (16GB RAM / 4 vCPU)
 After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Absolute path to the folder that holds docker-compose.yml
 WorkingDirectory=/opt/pete-panel
-ExecStart=/usr/bin/docker compose up -d --remove-orphans
-ExecStop=/usr/bin/docker compose down
+
+# 1) Always pull latest images for this stack
+ExecStart=/usr/bin/docker compose -f docker-compose.prod-16ram-4cpu.yml pull
+
+# 2) Rebuild images (in case Dockerfiles changed)
+ExecStart=/usr/bin/docker compose -f docker-compose.prod-16ram-4cpu.yml build
+
+# 3) Bring the stack up in detached mode
+ExecStart=/usr/bin/docker compose -f docker-compose.prod-16ram-4cpu.yml up -d
+
+# 4) Properly tear the stack down when stopping the service
+ExecStop=/usr/bin/docker compose -f docker-compose.prod-16ram-4cpu.yml down
+
 RemainAfterExit=yes
 TimeoutStartSec=0
-Restart=on-failure
-RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
