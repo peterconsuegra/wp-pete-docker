@@ -1,72 +1,79 @@
 [mysqld]
 # ─────────────────────────────────────────────────────────────────────────
-# Core sizing for ~8GiB cgroup cap (leave headroom for OS, page cache, tmp)
+# Core sizing for ~6GiB cgroup cap (container mem_limit ≈ 6144M)
+#   • InnoDB buffer pool ≈ 4G
+#   • Leaves ~2G for InnoDB overhead, Aria, per-connection buffers, etc.
 # ─────────────────────────────────────────────────────────────────────────
-innodb_buffer_pool_size      = 6G
-innodb_buffer_pool_instances = 4         # ~1.5G per instance
-innodb_log_file_size         = 1G        # ×2 files by default → 2G total redo
-innodb_log_buffer_size       = 256M
-innodb_flush_log_at_trx_commit = 1       # strict durability for orders/payments
-innodb_flush_method          = O_DIRECT  # avoid double-buffering on SSD
+innodb_buffer_pool_size      = 4G
+innodb_buffer_pool_instances = 4           # ~1G per instance
+innodb_log_file_size         = 512M        # ×2 files by default → 1G total redo
+innodb_log_buffer_size       = 128M
+innodb_flush_log_at_trx_commit = 1         # strict durability for orders/payments
+innodb_flush_method          = O_DIRECT    # avoid double-buffering on SSD
 innodb_flush_neighbors       = 0
 innodb_io_capacity           = 2000
 innodb_io_capacity_max       = 4000
 innodb_page_cleaners         = 4
 
-# ── Threads (MariaDB 10.6) ─────────────────────────────────────────────
+# ── Threads (MariaDB 10.6) — 1 vCPU container, but I/O threads are cheap ─────
 innodb_read_io_threads       = 4
 innodb_write_io_threads      = 4
 
-# ── Connections & per-connection memory (keep conservative) ────────────
-max_connections              = 200        # PHP-FPM ~24; leaves room for spikes
+# ── Connections & per-connection memory ───────────────────────────────────────
+# PHP-FPM max_children ≈ 30, so 150 leaves plenty of room for spikes,
+# CLI tools, and phpMyAdmin without blowing per-connection memory.
+max_connections              = 150
 max_allowed_packet           = 256M
-tmp_table_size               = 64M        # per-conn cap; avoid memory spikes
+
+# Per-connection buffers — keep conservative for 6G cap
+tmp_table_size               = 64M
 max_heap_table_size          = 64M
 sort_buffer_size             = 4M
 join_buffer_size             = 4M
 read_buffer_size             = 2M
 read_rnd_buffer_size         = 4M
 
-# ── Table cache & file limits (aligns with your container ulimits) ─────
+# ── Table cache & file limits (aligns with container ulimits) ─────────────────
 table_open_cache             = 4000
 table_definition_cache       = 2000
-open_files_limit             = 262144
+open_files_limit             = 262144     # matches docker-compose ulimit
 
-# ── Startup warmup & persistence ───────────────────────────────────────
+# ── Startup warmup & persistence ──────────────────────────────────────────────
 innodb_buffer_pool_load_at_startup  = 1
 innodb_buffer_pool_dump_at_shutdown = 1
 innodb_buffer_pool_dump_pct         = 50
 
-# ── General engine defaults ────────────────────────────────────────────
+# ── General engine defaults ───────────────────────────────────────────────────
 innodb_file_per_table        = 1
 innodb_adaptive_hash_index   = ON
 
-# ── Binary logging (disable if you are not replicating) ────────────────
+# ── Binary logging (disabled; you’re not replicating here) ────────────────────
 skip-log-bin
-# If you later enable binlog/replication, use:
+# If you later enable binlog/replication, consider:
 # binlog_format=ROW
 # sync_binlog=1
 
-# ── Character set & SQL modes ──────────────────────────────────────────
+# ── Character set & SQL modes ────────────────────────────────────────────────
 character-set-server         = utf8mb4
 collation-server             = utf8mb4_unicode_ci
 skip-name-resolve
 sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
 
-# ── Query cache (disabled on 10.6; keep explicit off) ──────────────────
+# ── Query cache (disabled on 10.6; keep explicit off) ─────────────────────────
 query_cache_type             = 0
 query_cache_size             = 0
 
-# ── Temp / misc ────────────────────────────────────────────────────────
+# ── Temp / misc ───────────────────────────────────────────────────────────────
 tmpdir                       = /tmp
 performance_schema           = ON
 innodb_print_all_deadlocks   = ON
 
-# ── Aria (used internally by MariaDB) ──────────────────────────────────
-aria_pagecache_buffer_size   = 256M
-aria_sort_buffer_size        = 128M
+# ── Aria (used internally by MariaDB) ─────────────────────────────────────────
+# Slightly trimmed vs previous 256M/128M to respect the 6G cap.
+aria_pagecache_buffer_size   = 128M
+aria_sort_buffer_size        = 64M
 
-# ── SSL disabled per your setup ────────────────────────────────────────
+# ── SSL disabled per your setup ───────────────────────────────────────────────
 ssl                          = 0
 skip_ssl
 
