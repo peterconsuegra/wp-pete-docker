@@ -33,9 +33,9 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
-    mem_limit: 1500m
-    mem_reservation: 1024m
-    cpus: "1.5"
+    mem_limit: 3072m 
+    mem_reservation: 2048m
+    cpus: "1.4"
     ulimits:
       nofile:
         soft: 131072
@@ -79,7 +79,7 @@ services:
       PHP_VERSION: 8.2
     mem_limit: 4096m
     mem_reservation: 3072m
-    cpus: "2.5"
+    cpus: "1.4"
     ulimits:
       nofile:
         soft: 131072
@@ -95,9 +95,9 @@ services:
     env_file: .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    mem_limit: 8192m
-    mem_reservation: 6144m
-    cpus: "3.0"
+    mem_limit: 6144m
+    mem_reservation: 4096m
+    cpus: "1.0"
     ulimits:
       nofile:
         soft: 262144
@@ -112,7 +112,7 @@ services:
     mem_limit: 512m
     mem_reservation: 256m
     memswap_limit: 1024m
-    cpus: "0.5"
+    cpus: "0.2"
 
 volumes:
   wp_data:

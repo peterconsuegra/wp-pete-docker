@@ -207,12 +207,12 @@ pete_environment=${PETE_ENVIRONMENT}
 if [ "$pete_environment" = "development" ]; then
   cd /var/www/html/Pete && php artisan addoption --option_name=domain_template --option_value=petelocal.net
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=development
-  echo "cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active"
   cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active
   cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=off
 else
   cd /var/www/html/Pete && php artisan addoption --option_name=environment --option_value=production
-  php artisan addoption --option_name=security_status --option_value=on
+  cd /var/www/html/Pete && php artisan addoption --option_name=security_status --option_value=off
+  cd /var/www/html/Pete/scripts && sudo ./toggle_security.sh -v $APACHE_RELOAD_SECRET -s off -k active
 fi
 
 ###############################################################################
