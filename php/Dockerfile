@@ -35,7 +35,9 @@ RUN set -eux; \
     cachetool --version
     
 RUN mkdir -p /var/log/php-fpm \
- && chown -R www-data:www-data /var/log/php-fpm
+ && touch /var/log/php-fpm/slowlog.log \
+ && chown -R www-data:www-data /var/log/php-fpm \
+ && chmod 0644 /var/log/php-fpm/slowlog.log
 
 # ────────────── 1. System & PHP extensions (WebP ready) ──────────────
 RUN apt-get update && \
