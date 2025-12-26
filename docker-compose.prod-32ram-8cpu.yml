@@ -34,7 +34,7 @@ services:
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
     mem_limit: 3072m
-    cpus: "5.5"
+    cpus: "1.5"
     ulimits:
       nofile:
         soft: 131072
