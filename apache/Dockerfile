@@ -145,6 +145,10 @@ RUN sed -i "s@__RELOAD_SECRET__@${APACHE_RELOAD_SECRET}@" /usr/local/bin/modsecu
 COPY conf/pete.conf /etc/apache2/sites-available/000-pete.conf
 COPY conf/phpmyadmin.conf   /etc/apache2/sites-available/
 
+#FPM STATUS
+COPY conf/fpm-status.conf /etc/apache2/conf-available/fpm-status.conf
+RUN a2enconf fpm-status
+
 # 6) Make vhost dirs shared & writable *before* volume is created
 RUN chown -R www-data:www-data /etc/apache2/sites-available /etc/apache2/sites-enabled
 
