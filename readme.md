@@ -209,3 +209,18 @@ http://pete.petelocal.net/phpmyadmin
 
 WordPress Pete © 2025 • Author Pedro Consuegra. pedroconsuegrat@gmail.com
 
+
+Grafana example for a 300 checkouts per minute
+
+k6 run \
+  -e BASE_URL="https://staging2.saveaplaya.org" \
+  -e PRODUCT_ID="29087" \
+  -e CHECKOUT_PATH="/checkout-2/" \
+  -e RATE=5 \
+  -e DURATION=1m \
+  -e PRE_VUS=60 \
+  -e MAX_VUS=120 \
+  -e DEBUG_LINES=30 \
+  woo-checkout-flow.js
+
+
