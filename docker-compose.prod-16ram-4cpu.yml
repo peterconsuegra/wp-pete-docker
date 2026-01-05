@@ -107,12 +107,21 @@ services:
         soft: -1
         hard: -1
   redis:
-    image: redis:7-alpine
-    restart: always
-    mem_limit: 512m
-    mem_reservation: 256m
-    memswap_limit: 1024m
-    cpus: "0.2"
+      image: redis:7-alpine
+      restart: always
+      mem_limit: 512m
+      cpus: "0.2"
+      command: >
+        redis-server
+        --maxmemory 400mb
+        --maxmemory-policy allkeys-lfu
+        --appendonly no
+        --save ""
+        --tcp-keepalive 60
+      ulimits:
+        nofile:
+          soft: 65536
+          hard: 65536
 
 volumes:
   wp_data:
