@@ -274,5 +274,12 @@ fi
 
 echo "Cron set. Tail with: docker compose exec php tail -f /var/log/cron.log"
 
+# Start cron for Laravel scheduler
+if command -v service >/dev/null 2>&1; then
+  service cron start || true
+else
+  cron || true
+fi
+
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm 
