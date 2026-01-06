@@ -126,8 +126,14 @@ RUN echo "alias dbuild='docker compose up --build'" >> /etc/bash.bashrc
 RUN echo "alias dphp='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
 RUN echo "alias dapache='docker compose build php && docker compose up -d php'" >> /etc/bash.bashrc
 
+# ────────────── 6. Copy cronjob logic if exists ──────────────────────────────────
+COPY cron/pete-panel.cron /etc/cron.d/pete-panel
+RUN chmod 0644 /etc/cron.d/pete-panel
 
-# ────────────── 6. Runtime defaults ──────────────────────────────────
+COPY install-cron.sh /usr/local/bin/install-cron.sh
+RUN chmod +x /usr/local/bin/install-cron.sh
+
+# ────────────── 7. Runtime defaults ──────────────────────────────────
 WORKDIR /var/www/html
 EXPOSE 9000
 

@@ -249,32 +249,7 @@ fi
 ###############################################################################
 
 
-###############################################################################
-# Laravel Scheduler via cron (runs every minute)
-###############################################################################
-CRON_FILE="/etc/cron.d/laravel-scheduler"
-
-cat > "$CRON_FILE" <<'EOF'
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-# WinThemBack Laravel scheduler
-* * * * * www-data cd /var/www/html/winthembacksaveaplayaorg && /usr/local/bin/php artisan schedule:run >> /var/www/html/winthembacksaveaplayaorg/storage/logs/scheduler.log 2>&1
-EOF
-
-chmod 0644 "$CRON_FILE"
-
-# Make sure log file exists and is writable by www-data
-mkdir -p /var/www/html/winthembacksaveaplayaorg/storage/logs
-touch /var/www/html/winthembacksaveaplayaorg/storage/logs/scheduler.log
-chown -R www-data:www-data /var/www/html/winthembacksaveaplayaorg/storage/logs
-
-# Start cron once
-service cron start || cron || true
-
-echo "Cron set. Tail with:"
-echo "docker compose exec php tail -f /var/www/html/winthembacksaveaplayaorg/storage/logs/scheduler.log"
-
+/usr/local/bin/install-cron.sh || true
 
 # 5) Finally delegate to the official Apache entrypoint
 exec php-fpm -F

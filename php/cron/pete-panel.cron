@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Pete Laravel scheduler
+* * * * * www-data cd /var/www/html/Pete && /usr/local/bin/php artisan schedule:run 
