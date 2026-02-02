@@ -33,6 +33,7 @@ services:
           - dashboard.wordpresspete.com
           - dashboard.deploypete.petelocal.net
           - deploypete.petelocal.net
+          - dian.saveaplaya.petelocal.net
     mem_limit: 384m
     mem_reservation: 256m
     memswap_limit: 768m
