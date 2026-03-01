@@ -241,22 +241,22 @@ Pete Panel follows a **stable-first release workflow** to keep production enviro
 
 ## Branching Strategy
 
-- `main` branch always contains the **latest stable production-ready version**
-- Experimental or in-progress features should never live directly in `main`
+- `master` branch always contains the **latest stable production-ready version**
+- Experimental or in-progress features should never live directly in `master`
 - Stable releases are validated before being pushed
 
 ## Release Flow
 
 1. Develop and test changes
 2. Validate stability locally and/or in staging
-3. Push the stable version to the `main` branch
+3. Push the stable version to the `master` branch
 4. Create and push a Git tag for that version
 
 Example:
 
 ```bash
-git checkout main
-git pull origin main
+git checkout master
+git pull origin master
 git tag v14.9
 git push origin v14.9
 ```
@@ -274,7 +274,7 @@ This ensures:
 
 • The Docker environment always installs a **stable tagged release**  
 • Production deployments remain deterministic  
-• The `main` branch reflects the most recent stable code  
+• The `master` branch reflects the most recent stable code  
 • Tags represent immutable release snapshots  
 
 ---
