@@ -1,226 +1,282 @@
-# WordPress Pete Docker Environment 
 
-This **README** groups the most‑used commands and maintenance tasks for running WordPress Pete locally with Docker. Feel free to adapt it to your own workflow.
+# Pete Panel Docker Environment  
+WordPress + WooCommerce + Laravel (Docker Stack)
 
----
+Pete Panel is a developer-first control panel for launching, cloning, migrating, and syncing WordPress and Laravel projects in minutes.
 
-\## 1. Prerequisites
+This repository provides the full Docker LAMP stack that powers Pete locally and in production profiles.
 
-- **Docker Engine** ≥ 20.10
-- **Docker Compose**
-  - macOS (Docker Desktop ≤ v1): `docker‑compose`
-  - Linux & Docker Desktop v2+: `docker compose`
-
-> In the snippets below we use the **Compose v2** syntax (`docker compose`).\
-> If you are on an older macOS setup, simply replace `docker compose` with `docker‑compose`.
+👉 Learn more about Pete Dev Playgrounds:  
+https://deploypete.com/dev-playgrounds/
 
 ---
 
-\## 2. Starting & Stopping the stack
+# 🚀 What This Stack Includes
+
+• Apache (MPM Event + HTTP/2)  
+• PHP-FPM (WordPress + Laravel runtime)  
+• MariaDB (tuned for dev & production)  
+• Redis  
+• phpMyAdmin (auto-installed)  
+• Automated first-run Pete installer  
+• Multiple performance profiles (dev, 16GB, 32GB)
+
+---
+
+# 🧠 How the Architecture Works
+
+Browser  
+→ Apache (port 80/443)  
+→ PHP-FPM (port 9000 internal)  
+→ MariaDB / Redis  
+
+Volumes persist:
+
+| Volume | Purpose |
+|--------|---------|
+| wp_data | WordPress sites + Pete Panel |
+| db_data | Database storage |
+| pma_data | phpMyAdmin files |
+| ssl_data | Let's Encrypt certificates |
+| apache_logs | Apache logs |
+| ssh_data | Shared SSH keys |
+
+---
+
+# 🔗 How This Docker Environment Connects to the Pete Panel Laravel Control Panel
+
+This Docker stack is tightly integrated with the Pete Panel Laravel hosting control panel via:
+
+```
+php/pete_install.sh
+```
+
+This script bridges:
+
+• Docker infrastructure (Apache, PHP, DB, Redis)  
+• The Pete Panel Laravel application  
+• The DeployPete dashboard (https://dashboard.deploypete.com)  
+
+---
+
+## 🧩 What Happens on First Boot
+
+When the `php` container starts, `pete_install.sh` runs automatically.
+
+### 1️⃣ Infrastructure Preparation
+
+- Waits for MariaDB
+- Fixes permissions
+- Prepares `/var/www/html`
+
+### 2️⃣ Clones the Laravel Control Panel
+
+It clones:
+
+https://github.com/peterconsuegra/pete-panel.git
+
+Then:
+
+- Checks out the latest Git tag
+- Creates a fresh `.env`
+- Injects Docker-specific environment values
+
+Key injected values:
+
+- DB_HOST=db
+- DB_DATABASE=${PETE_DB_NAME}
+- APACHE_RELOAD_URL
+- APACHE_RELOAD_SECRET
+- APACHE_CERTBOT_URL
+- PETE_DASHBOARD_URL=https://dashboard.deploypete.com
+
+---
+
+## 🗄 Database & Laravel Bootstrapping
+
+The script:
+
+• Creates database + user  
+• Creates `options` table  
+• Runs Laravel migrations  
+• Generates app key  
+• Caches config and routes  
+
+This prepares the control panel to manage:
+
+- WordPress sites
+- Apache vhosts
+- SSL certificates
+- Exports
+- Logs
+- Backups
+
+---
+
+## ⚙️ Docker → Laravel Communication
+
+### 🔄 Apache Internal Reload
+
+```
+APACHE_RELOAD_URL=http://apache/internal-reload
+```
+
+Used when:
+
+- Creating vhosts
+- Enabling sites
+- Updating Apache configs
+- Requesting certificate generation
+
+Authenticated via:
+
+```
+APACHE_RELOAD_SECRET
+```
+
+---
+
+### 🔐 Security Integration
+
+The installer runs:
+
+```
+Pete/scripts/toggle_security.sh
+```
+
+Development → security relaxed  
+Production → security configurable  
+
+---
+
+## 🔑 SSH Key Automation
+
+The script automatically:
+
+- Generates SSH keys for `www-data`
+- Generates SSH keys for `root`
+- Preloads GitHub/Bitbucket known_hosts
+
+This allows the control panel to:
+
+- Clone private repositories
+- Deploy Laravel projects
+- Sync WordPress projects
+
+---
+
+## 🧠 System Metadata Registration
+
+The installer stores Docker metadata inside the `options` table:
+
+Examples:
+
+- os = docker
+- server = apache
+- os_stack = apache_mpm_prefork
+- server_conf = /etc/apache2/sites-available
+- logs_route = /var/www/html/wwwlog
+
+The Laravel control panel uses this to dynamically manage the environment.
+
+---
+
+## 🗄 phpMyAdmin Bootstrap
+
+phpMyAdmin is installed automatically into the shared `pma_data` volume on first boot.
+
+---
+
+## 🚀 Runtime Mode
+
+After installation:
+
+```
+exec php-fpm -F
+```
+
+Laravel now manages:
+
+• Site creation  
+• Apache vhost configs  
+• Internal reload triggers  
+• Backups and exports  
+• WordPress + Laravel integrations  
+
+---
+
+# 🏗 Conceptual Architecture
+
+Docker provides:
+
+- Infrastructure
+- Isolation
+- Performance tuning
+
+Laravel (Pete Panel) provides:
+
+- Hosting control logic
+- Site lifecycle management
+- Dashboard integration
+- Automation
+
+Together they form:
+
+👉 A portable hosting control panel running entirely inside Docker  
+👉 A production-ready WordPress + Laravel hybrid stack  
+
+---
+
+For advanced workflows:
+
+👉 https://deploypete.com/dev-playgrounds/
+
+
+
+---
+
+# 🔖 Development & Release Policy
+
+Pete Panel follows a **stable-first release workflow** to keep production environments predictable and safe.
+
+## Branching Strategy
+
+- `main` branch always contains the **latest stable production-ready version**
+- Experimental or in-progress features should never live directly in `main`
+- Stable releases are validated before being pushed
+
+## Release Flow
+
+1. Develop and test changes
+2. Validate stability locally and/or in staging
+3. Push the stable version to the `main` branch
+4. Create and push a Git tag for that version
+
+Example:
 
 ```bash
-# Build images (if needed) and start containers in the background
-docker compose up --build
-
-# Shut everything down
-docker compose down
+git checkout main
+git pull origin main
+git tag v14.9
+git push origin v14.9
 ```
 
----
+## Why This Matters
 
-\## 3. Working inside containers
+The Docker installer (`pete_install.sh`) automatically checks out the **latest Git tag**:
 
 ```bash
-# Apache (web server)
-docker compose exec apache bash
-
-# PHP-FPM (CLI tasks, Composer, Artisan, …)
-docker compose exec php bash
-
-# MySQL shell
-docker compose exec db mysql -u root -p
+latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+git checkout $latestTag
 ```
+
+This ensures:
+
+• The Docker environment always installs a **stable tagged release**  
+• Production deployments remain deterministic  
+• The `main` branch reflects the most recent stable code  
+• Tags represent immutable release snapshots  
 
 ---
 
-\## 4. Rebuilding images after editing **Dockerfile**
-
-```bash
-# Rebuild Apache image
-docker compose build --no-cache apache
-
-# Rebuild PHP image
-docker compose build --no-cache php
-```
-
----
-
-\## 5. Database & phpMyAdmin
-
-```bash
-# Reset phpMyAdmin volume (removes database cache only)
-docker compose down
-docker volume rm wp-pete-docker_pma_data
-```
-
-phpMyAdmin is mapped (when enabled) at:
-
-```
-http://pete.petelocal.net/phpmyadmin
-```
-
----
-
-\## 6. Volume & Container housekeeping
-
-```bash
-# Remove **all** volumes defined in docker‑compose.yml
-docker compose down -v
-```
-
----
-
-\## 7. Restarting Apache quickly
-
-```bash
-# Inside the **apache** container
-apache2ctl restart
-```
-
-Virtual‑host files live in:
-
-```
-/etc/apache2/sites-available
-/etc/apache2/sites-enabled
-```
-
----
-
-\## 8. Triggering an Apache reload from PHP (internal)
-
-```bash
-curl -sf -H "X-Reload-Secret: <YOUR_SECRET>" \
-     http://apache/internal-reload || true
-```
-
----
-
-\## 9. Sample WordPress site (optional)
-
-```bash
-# Apache container example
-docker compose exec apache bash -c "cd /var/www/html && \
-  curl -LO https://wordpresspete.com/demov5.tar.gz && \
-  chown www-data:www-data demov5.tar.gz"
-```
-
----
-
-\## 10. Harden your VM (optional but recommended)
-
-```bash
-# Change SSH port
-vim /etc/ssh/sshd_config   # Port 2222
-sudo systemctl reload sshd
-
-# Lock down the firewall
-sudo ufw delete limit 22/tcp
-sudo ufw limit 2222/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
-
-Request a free Let’s Encrypt certificate via the built‑in Certbot helper:
-
-```bash
-curl -s -H "X-Reload-Secret: <YOUR_SECRET>" \
-     "http://apache/internal-certbot?domain=example.com&email=you@example.com"
-```
-
----
-
-\## 11. Apache tuning & production rebuild
-
-```bash
-# Re‑compute limits for this host
-./bin/tune_apache_env.sh        # Defaults to auto‑detect cores & RAM
-# or manually: ./bin/tune_apache_env.sh 4c 8G
-
-# Bake new numbers into the image
-docker compose build apache
-
-# Restart the stack
-docker compose up -d apache
-```
-
-Performance conf: `/etc/apache2/conf-available/performance.conf`
-
----
-
-\## 12. Laravel optimisation helper
-
-```bash
-php artisan optimize:clear
-```
-
----
-
-\## 13. Troubleshooting **Missing service provider after Composer update**
-
-```bash
-composer remove peteconsuegra/wordpress-plus-laravel \
-                peteconsuegra/wordpress-plus-laravel-plugin --no-update
-composer update --no-scripts   # Drops the packages
-
-rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
-composer dump-autoload -o       # Re‑generate manifest
-```
-
-### 14. Start the stack in production
-docker compose pull
-docker compose build
-docker compose up -d
-
----
-TESTING MOVING TEST SITE INSIDE DOCKER FOLDER:
-docker cp /Users/pedroconsuegra/Sites/wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
-docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
-
-Cloud Test
-docker cp /opt/wordpresspetepetelocalnet.tar.gz wordpress-pete-php-1:/var/www/html/
-docker exec -it wordpress-pete-php-1: -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
-
-Windows Test
-docker cp \Users\user\Sites\wordpresspetepetelocalnet.tar.gz wp-pete-docker-php-1:/var/www/html/
-docker exec -it wp-pete-docker-php-1 bash -c "chown -R www-data:www-data /var/www/html/wordpresspetepetelocalnet.tar.gz"
-
-
-\### Common test URLs
-
-```
-http://pete.petelocal.net/server-status?refresh=5
-http://pete.petelocal.net/phpmyadmin
-```
-
----
-
-\### Further reading Legacy wiki (archived): [https://github.com/peterconsuegra/wordpress-pete-docker/wiki](https://github.com/peterconsuegra/wordpress-pete-docker/wiki)
-
-WordPress Pete © 2025 • Author Pedro Consuegra. pedroconsuegrat@gmail.com
-
-
-Grafana example for a 300 checkouts per minute
-
-k6 run \
-  -e BASE_URL="https://staging2.saveaplaya.org" \
-  -e PRODUCT_ID="29087" \
-  -e CHECKOUT_PATH="/checkout-2/" \
-  -e RATE=5 \
-  -e DURATION=1m \
-  -e PRE_VUS=60 \
-  -e MAX_VUS=120 \
-  -e DEBUG_LINES=30 \
-  woo-checkout-flow.js
-
-
+This policy guarantees that Docker environments, production servers, and DeployPete dashboard integrations always run verified stable builds.

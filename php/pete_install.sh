@@ -20,7 +20,7 @@ if [ ! -f /var/www/html/.installed ]; then
   rm -rf /var/www/html/Pete
   cd /var/www/html
 
-  git clone https://ozone777@bitbucket.org/ozone777/wordpresspete3.git Pete
+  git clone https://github.com/peterconsuegra/pete-panel.git Pete
   cd Pete
 
   git fetch --tags
