@@ -25,6 +25,10 @@ services:
     networks:
       default:
         aliases:
+          - ozonegroup.co
+          - pedroconsuegra.com
+          - deploypete.com
+          - saveaplaya.org
           - demo3.petelocal.net
           - demo3.wordpresspete.org
           - wordpresspete.petelocal.net

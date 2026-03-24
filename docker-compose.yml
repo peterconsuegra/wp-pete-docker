@@ -25,6 +25,7 @@ services:
     networks:
       default:
         aliases:
+          - ozonegroup.petelocal.net
           - demo3.petelocal.net
           - demo3.wordpresspete.org
           - wordpresspete.petelocal.net
