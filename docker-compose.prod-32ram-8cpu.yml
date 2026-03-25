@@ -25,6 +25,8 @@ services:
     networks:
       default:
         aliases:
+          - saveaplaya.org
+          - saveaplaya.co
           - demo3.petelocal.net
           - demo3.wordpresspete.org
           - wordpresspete.petelocal.net
