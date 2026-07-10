@@ -76,9 +76,9 @@ RUN apt-get update && \
 RUN /bin/sh -lc 'touch /var/log/cron.log && chmod 0644 /var/log/cron.log'
 
 # ────────────── 2. Node.js & npm ──────────────────────────────────────
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
-    npm install -g npm@latest
+    npm install -g npm@11
 
 # ────────────── 3. Composer & WP-CLI ─────────────────────────────────
 RUN curl -sS https://getcomposer.org/installer | php && \
