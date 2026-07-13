@@ -77,6 +77,9 @@ SQL
 
 
   # 1) install vendor WITHOUT running composer scripts (avoids package:discover early)
+  # Composer >= 2.9 blocks advisory-affected packages (Laravel 10.x is flagged);
+  # disable the block if this composer supports the setting (no-op on 2.8).
+  composer config -g policy.advisories.block false 2>/dev/null || true
   COMPOSER_CACHE_DIR=/dev/null composer install --ignore-platform-reqs --prefer-dist --no-dev --no-scripts
 
   # ensure DB + placeholder 'options' table exist before any artisan command

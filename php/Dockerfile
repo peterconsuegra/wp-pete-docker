@@ -81,7 +81,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     npm install -g npm@11
 
 # ────────────── 3. Composer & WP-CLI ─────────────────────────────────
-RUN curl -sS https://getcomposer.org/installer | php && \
+# Composer is pinned: 2.9+ blocks packages with open security advisories by
+# default, which breaks Pete's install (laravel/framework ^10.0 is flagged).
+RUN curl -sS https://getcomposer.org/installer | php -- --version=2.8.12 && \
     mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer && \
     curl -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
     chmod +x /usr/local/bin/wp
