@@ -1,258 +1,132 @@
+# Pete Panel — The Agentic WordPress Environment
 
-# Pete Panel Docker Environment  
-WordPress + WooCommerce + Laravel (Docker Stack)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3-777BB4?logo=php&logoColor=white)
+![WordPress](https://img.shields.io/badge/WordPress-ready-21759B?logo=wordpress&logoColor=white)
+![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%E2%80%93M5-000000?logo=apple&logoColor=white)
 
-Pete Panel is a developer-first control panel for launching, cloning, migrating, and syncing WordPress and Laravel projects in minutes.
+> A safe, disposable, full-stack WordPress environment your AI agent can own. Clone production, let Claude do the heavy lifting, gate the risky steps, and ship — all inside Docker.
 
-This repository provides the full Docker LAMP stack that powers Pete locally and in production profiles.
+**Pete Panel** is the control panel built for **agentic development**. This repository is the Docker stack that powers a Pete Panel **dev playground** on your Mac — giving an AI coding agent like Claude real WP-CLI, files, database, and logs to operate directly, on a throwaway copy of your site, while production never feels a thing.
 
-👉 Learn more about Pete Dev Playgrounds:  
-https://deploypete.com/dev-playgrounds/
-
----
-
-# 🚀 What This Stack Includes
-
-• Apache (MPM Event + HTTP/2)  
-• PHP-FPM (WordPress + Laravel runtime)  
-• MariaDB (tuned for dev & production)  
-• Redis  
-• phpMyAdmin (auto-installed)  
-• Automated first-run Pete installer  
-• Multiple performance profiles (dev, 16GB, 32GB)
+🔗 **Learn more:** [What is an agentic WordPress environment?](https://deploypete.com/what-is-an-agentic-wordpress-environment/) · [Dev Playgrounds](https://deploypete.com/dev-playgrounds/) · [deploypete.com](https://deploypete.com)
 
 ---
 
-# 🧠 How the Architecture Works
+## Why an agentic WordPress environment?
 
-Browser  
-→ Apache (port 80/443)  
-→ PHP-FPM (port 9000 internal)  
-→ MariaDB / Redis  
+AI agents can rebuild a theme, migrate a site off a page builder, or recreate a landing page in a single session — but nobody should point an agent at production. Pete gives the agent a perfect, disposable copy of your site, isolated in Docker.
 
-Volumes persist:
-
-| Volume | Purpose |
-|--------|---------|
-| wp_data | WordPress sites + Pete Panel |
-| db_data | Database storage |
-| pma_data | phpMyAdmin files |
-| ssl_data | Let's Encrypt certificates |
-| apache_logs | Apache logs |
-| ssh_data | Shared SSH keys |
+- **Built for AI agents** — real WP-CLI, files, database, and logs, not a limited dashboard API.
+- **Isolated & disposable** — the agent works on a copy; if a run goes sideways, delete it and clone again.
+- **Field-tested workflows** — one-line commands like [`/retheme`](https://deploypete.com/workflows/) and [`/reblock`](https://deploypete.com/workflows/) run entire gated migrations.
+- **Humans hold the keys** — rights gates and deploy gates keep people in charge of the irreversible steps.
 
 ---
 
-# 🔗 How This Docker Environment Connects to the Pete Panel Laravel Control Panel
+## Requirements
 
-This Docker stack is tightly integrated with the Pete Panel Laravel hosting control panel via:
+- An **Apple silicon Mac** (M1 / M2 / M3 / M4 / M5)
+- **Docker Desktop** (running)
+- **Git**
 
-```
-php/pete_install.sh
+> Intel Macs, Windows, and Linux are not supported for the local dev playground. The production installer, however, runs on any Ubuntu 24.04 server — see [Deploying to Production](https://deploypete.com/deploying-to-production/).
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/peterconsuegra/wp-pete-docker.git
+cd wp-pete-docker
+cp .env.example.development .env
+docker compose up --build
 ```
 
-This script bridges:
-
-• Docker infrastructure (Apache, PHP, DB, Redis)  
-• The Pete Panel Laravel application  
-• The DeployPete dashboard (https://dashboard.deploypete.com)  
+When the containers are healthy, open **http://pete.petelocal.net/** over **HTTP (not HTTPS)** — you'll see the WordPress setup screen. Code inside the container with VS Code's **Dev Containers** extension: attach to the `php` container and open `/var/www/html`.
 
 ---
 
-## 🧩 What Happens on First Boot
+## What's inside
 
-When the `php` container starts, `pete_install.sh` runs automatically.
+| Service | Role |
+|---|---|
+| **Apache** | Web server — MPM Event + HTTP/2, ports 80/443 |
+| **PHP-FPM** | WordPress runtime — PHP 8.1 / 8.2 / 8.3, switchable |
+| **MariaDB** (`db`) | Database |
+| **Redis** | Object cache |
+| **phpMyAdmin** | Database UI (auto-installed on first boot) |
 
-### 1️⃣ Infrastructure Preparation
+Plus ModSecurity + the OWASP Core Rule Set (WAF) and Let's Encrypt SSL in the production profiles.
 
-- Waits for MariaDB
-- Fixes permissions
-- Prepares `/var/www/html`
-
-### 2️⃣ Clones the Laravel Control Panel
-
-It clones:
-
-https://github.com/peterconsuegra/pete-panel.git
-
-Then:
-
-- Checks out the latest Git tag
-- Creates a fresh `.env`
-- Injects Docker-specific environment values
-
-Key injected values:
-
-- DB_HOST=db
-- DB_DATABASE=${PETE_DB_NAME}
-- APACHE_RELOAD_URL
-- APACHE_RELOAD_SECRET
-- APACHE_CERTBOT_URL
-- PETE_DASHBOARD_URL=https://dashboard.deploypete.com
+**Persistent volumes:** `wp_data` (WordPress sites + Pete Panel), `db_data`, `pma_data`, `ssl_data`, `apache_logs`, `ssh_data`, `apache_sites_available`, `apache_sites_enabled`.
 
 ---
 
-## 🗄 Database & Laravel Bootstrapping
+## Work with an AI agent
 
-The script:
+Once the playground is up, it's an [agentic WordPress environment](https://deploypete.com/what-is-an-agentic-wordpress-environment/): point Claude at it and it gets everything a senior developer touches.
 
-• Creates database + user  
-• Creates `options` table  
-• Runs Laravel migrations  
-• Generates app key  
-• Caches config and routes  
-
-This prepares the control panel to manage:
-
-- WordPress sites
-- Apache vhosts
-- SSL certificates
-- Exports
-- Logs
-- Backups
-
----
-
-## ⚙️ Docker → Laravel Communication
-
-### 🔄 Apache Internal Reload
-
-```
-APACHE_RELOAD_URL=http://apache/internal-reload
+```bash
+# Shell into the runtime and use WP-CLI on a full copy of the site
+docker compose exec php bash
+wp option get blogname
 ```
 
-Used when:
+Then run a field-tested workflow:
 
-- Creating vhosts
-- Enabling sites
-- Updating Apache configs
-- Requesting certificate generation
-
-Authenticated via:
-
-```
-APACHE_RELOAD_SECRET
-```
+- **`/retheme`** — migrate a legacy theme (Divi, Genesis) to a Full-Site-Editing block theme. → [Guide](https://deploypete.com/guides/migrate-divi-to-block-theme/)
+- **`/reblock`** — rebuild any page, on any stack (WordPress, Shopify, Webflow, headless, static), as a self-contained WordPress block theme. → [Guide](https://deploypete.com/guides/rebuild-any-page-as-wordpress-blocks/)
 
 ---
 
-### 🔐 Security Integration
+## Docker cheat-sheet
 
-The installer runs:
+Run these from the project folder (`wp-pete-docker`).
 
-```
-Pete/scripts/toggle_security.sh
-```
+| Task | Command |
+|---|---|
+| Start / rebuild the stack | `docker compose up --build` |
+| Shell into a container | `docker compose exec php bash` · `docker compose exec apache bash` · `docker compose exec db bash` |
+| Rebuild after a Dockerfile edit | `docker compose build --no-cache php` |
+| Restart Apache in place | `docker compose exec apache apache2ctl restart` |
+| Enter MariaDB as root | `docker compose exec db mysql -u root -p` (password = `MYSQL_ROOT_PASSWORD` in `.env`) |
+| Reset phpMyAdmin | `docker compose down` then `docker volume rm wp-pete-docker_pma_data` |
+| Delete **all** volumes (irreversible) | `docker compose down -v` |
 
-Development → security relaxed  
-Production → security configurable  
-
----
-
-## 🔑 SSH Key Automation
-
-The script automatically:
-
-- Generates SSH keys for `www-data`
-- Generates SSH keys for `root`
-- Preloads GitHub/Bitbucket known_hosts
-
-This allows the control panel to:
-
-- Clone private repositories
-- Deploy Laravel projects
-- Sync WordPress projects
+WordPress files live at `/var/www/html`; Apache v-hosts at `/etc/apache2/sites-available` (edit, then `apache2ctl graceful`).
 
 ---
 
-## 🧠 System Metadata Registration
+## Deploy to production
 
-The installer stores Docker metadata inside the `options` table:
+The same stack runs on any Ubuntu 24.04 server. One command installs it, auto-tuning Docker resources to the machine's RAM and CPU:
 
-Examples:
-
-- os = docker
-- server = apache
-- os_stack = apache_mpm_prefork
-- server_conf = /etc/apache2/sites-available
-- logs_route = /var/www/html/wwwlog
-
-The Laravel control panel uses this to dynamically manage the environment.
-
----
-
-## 🗄 phpMyAdmin Bootstrap
-
-phpMyAdmin is installed automatically into the shared `pma_data` volume on first boot.
-
----
-
-## 🚀 Runtime Mode
-
-After installation:
-
-```
-exec php-fpm -F
+```bash
+curl -o pete_installer.sh -L https://deploypete.com/pete_installer.sh && chmod 755 pete_installer.sh && sudo ./pete_installer.sh
 ```
 
-Laravel now manages:
+Ready-made server profiles are included: `docker-compose.prod-8ram-4cpu.yml`, `docker-compose.prod-16ram-4cpu.yml`, `docker-compose.prod-16ram-6cpu.yml`, `docker-compose.prod-32ram-8cpu.yml`. See the full per-cloud guides for [Linode, Hetzner, Google Cloud & AWS](https://deploypete.com/deploying-to-production/) and the [performance benchmarks by server size](https://deploypete.com/benchmarks/).
 
-• Site creation  
-• Apache vhost configs  
-• Internal reload triggers  
-• Backups and exports  
-• WordPress + Laravel integrations  
+To bring an existing site in, use the free [Pete Converter](https://deploypete.com/plugins/) to export any WordPress site into Pete format and import it into a playground or production.
 
 ---
 
-# 🏗 Conceptual Architecture
+## Under the hood
 
-Docker provides:
+On first boot, the `php` container runs `php/pete_install.sh`, which waits for the database, prepares `/var/www/html`, installs phpMyAdmin, and brings up the **Pete Panel control panel** — a Laravel application, cloned from [`peterconsuegra/pete-panel`](https://github.com/peterconsuegra/pete-panel), that manages sites, Apache v-hosts, SSL, backups, and exports. Docker provides the isolated, tuned infrastructure; the control panel provides the hosting logic. The installer checks out the latest stable Git tag so environments are deterministic.
 
-- Infrastructure
-- Isolation
-- Performance tuning
-
-Laravel (Pete Panel) provides:
-
-- Hosting control logic
-- Site lifecycle management
-- Dashboard integration
-- Automation
-
-Together they form:
-
-👉 A portable hosting control panel running entirely inside Docker  
-👉 A production-ready WordPress + Laravel hybrid stack  
+**Apache internal reload** — the control panel triggers config reloads via `APACHE_RELOAD_URL` (`http://apache/internal-reload`), authenticated with `APACHE_RELOAD_SECRET`, so v-host and certificate changes apply without recreating containers.
 
 ---
 
-For advanced workflows:
+## Development & release policy
 
-👉 https://deploypete.com/dev-playgrounds/
+Pete Panel follows a **stable-first** workflow:
 
-
-
----
-
-# 🔖 Development & Release Policy
-
-Pete Panel follows a **stable-first release workflow** to keep production environments predictable and safe.
-
-## Branching Strategy
-
-- `master` branch always contains the **latest stable production-ready version**
-- Experimental or in-progress features should never live directly in `master`
-- Stable releases are validated before being pushed
-
-## Release Flow
-
-1. Develop and test changes
-2. Validate stability locally and/or in staging
-3. Push the stable version to the `master` branch
-4. Create and push a Git tag for that version
-
-Example:
+- `master` always holds the latest stable, production-ready version.
+- Experimental work stays off `master`.
+- Stable releases are validated, then tagged.
 
 ```bash
 git checkout master
@@ -261,22 +135,20 @@ git tag v14.9
 git push origin v14.9
 ```
 
-## Why This Matters
-
-The Docker installer (`pete_install.sh`) automatically checks out the **latest Git tag**:
-
-```bash
-latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
-git checkout $latestTag
-```
-
-This ensures:
-
-• The Docker environment always installs a **stable tagged release**  
-• Production deployments remain deterministic  
-• The `master` branch reflects the most recent stable code  
-• Tags represent immutable release snapshots  
+The Docker installer checks out the latest Git tag, so Docker environments, production servers, and dashboard integrations always run a verified, immutable release snapshot.
 
 ---
 
-This policy guarantees that Docker environments, production servers, and DeployPete dashboard integrations always run verified stable builds.
+## Learn more
+
+- 🏠 [Pete Panel + Claude](https://deploypete.com/) — why an AI agent needs a real environment
+- 🧩 [What is an agentic WordPress environment?](https://deploypete.com/what-is-an-agentic-wordpress-environment/)
+- ⚡ [Workflows](https://deploypete.com/workflows/) — `/retheme` and `/reblock`
+- 📚 [Guides](https://deploypete.com/guides/) — migrate, clone, rebuild, and move WordPress sites
+- 📊 [Benchmarks](https://deploypete.com/benchmarks/) — throughput by server size
+- ⚖️ [Compare](https://deploypete.com/compare/) — vs LocalWP, DevKinsta, Docker, WP Engine, WordPress VIP
+- 💬 [Contact & Enterprise](https://deploypete.com/contact-us/)
+
+---
+
+_Pete Panel — the control panel built for agentic WordPress development. Build locally on your Mac, hand the keys to your AI agent, and deploy anywhere._
