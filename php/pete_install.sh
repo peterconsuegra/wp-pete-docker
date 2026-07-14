@@ -43,7 +43,7 @@ PETE_ROOT_PASS=${PETE_ROOT_PASSWORD}
 APACHE_RELOAD_URL=${APACHE_RELOAD_URL}
 APACHE_RELOAD_SECRET=${APACHE_RELOAD_SECRET}
 APACHE_CERTBOT_URL=${APACHE_CERTBOT_URL}
-PETE_DASHBOARD_URL=https://dashboard.deploypete.com
+PETE_DASHBOARD_URL=https://deploypete.com
 PETE_DEMO=inactive
 PETE_DEBUG=inactive
 EOF
@@ -94,7 +94,11 @@ SQL
   # 4) now it’s safe to run discovery (and any other composer scripts)
   php artisan package:discover --ansi
   # (optional but recommended)
-  php artisan config:cache
+  # config:cache is intentionally NOT run: Pete reads env() at runtime
+  # (e.g. PETE_DASHBOARD_URL in PeteService), and a cached config makes
+  # env() return null for .env values. Re-enable only after the app is
+  # migrated to config() accessors.
+  php artisan config:clear
   php artisan route:cache
 
   # Add general options
