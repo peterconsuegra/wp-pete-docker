@@ -1,6 +1,6 @@
 ---
 name: plugin_audit
-description: Static security audit of a single WordPress plugin. Reads the plugin's PHP source, traces untrusted input from source to dangerous sink, and produces a severity-ranked report of real, exploitable findings (CSRF, missing capability checks, SQLi, XSS, file/SSRF/RCE, auth-bypass in AJAX/REST). Read-only — never modifies the plugin, DB, or site. Use when the user wants to security-review, audit, or find vulnerabilities in a WP plugin. One plugin per run. Args: PLUGIN_PATH [SSH_HOST].
+description: Static security audit of a single WordPress plugin in a local Pete Panel dev playground. Reads the plugin's PHP source, traces untrusted input from source to dangerous sink, and produces a severity-ranked report of real, exploitable findings (CSRF, missing capability checks, SQLi, XSS, file/SSRF/RCE, auth-bypass in AJAX/REST). Read-only and local-only — never modifies the plugin, DB, or site, and never connects to production. Use when the user wants to security-review, audit, or find vulnerabilities in a WP plugin. One plugin per run. Args: PLUGIN_PATH.
 ---
 
 # Plugin Audit — WordPress plugin security review
@@ -10,18 +10,22 @@ report them ranked by severity. This is **defensive, read-only static analysis**
 user owns or operates — never modify the plugin, run its code, touch the database, or attempt
 live exploitation. The deliverable is a findings report, not a patch (offer fixes after).
 
+**Local-only.** The audit runs against a plugin in the local Pete Panel dev playground —
+never SSH to production or a remote server. Static source review needs only the files, and a
+dev playground already holds a copy of whatever you'd want to audit; keeping it local means
+the workflow can never touch a live site. To audit a plugin that only exists on production,
+pull it into a playground first (that's a separate, deliberate step), then point this at it.
+
 ## Arguments
 
 - `PLUGIN_PATH` (required) — plugin directory, e.g.
-  `/var/www/html/deploypetepetelocalnet/wp-content/plugins/pete-logic`. It's a path *inside a
-  Pete Panel php container*, not on the Mac.
-- `SSH_HOST` (optional) — if given, the plugin lives on a remote server; prefix container
-  commands with `ssh <SSH_HOST> "…"`. Omitted = local `wp-pete-docker-php-1`.
+  `/var/www/html/deploypetepetelocalnet/wp-content/plugins/pete-logic`. It's a path *inside the
+  local Pete Panel php container*, not on the Mac.
 
 Derive:
-- Local container: `wp-pete-docker-php-1`. Remote: `pete-panel-php-1` (via SSH_HOST).
-- Read files with `docker exec <container> cat <file>` (add `ssh` prefix when remote). Prefer
-  reading whole files for context over grepping single lines once a file is implicated.
+- Container: `wp-pete-docker-php-1` (local dev). Read files with
+  `docker exec wp-pete-docker-php-1 cat <file>`. Prefer reading whole files for context over
+  grepping single lines once a file is implicated.
 - Report dir: `/Users/pedroconsuegra/Sites/plugin_audits/` (create if missing). Write the
   final report to `<report-dir>/<plugin-name>-<timestamp>.md`.
 
