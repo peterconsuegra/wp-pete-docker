@@ -1,0 +1,4 @@
+pete-panel-php-1 cpu=0.01% mem=19.48%
+pete-panel-db-1 cpu=0.01% mem=13.80%
+fpm_busy_workers=10
+load=2.55 3.98 2.18 3/444 88163

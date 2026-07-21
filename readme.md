@@ -145,7 +145,7 @@ The Docker installer checks out the latest Git tag, so Docker environments, prod
 - 🧩 [What is an agentic WordPress environment?](https://deploypete.com/what-is-an-agentic-wordpress-environment/)
 - ⚡ [Workflows](https://deploypete.com/workflows/) — `/retheme` and `/reblock`
 - 📚 [Guides](https://deploypete.com/guides/) — migrate, clone, rebuild, and move WordPress sites
-- 📊 [Benchmarks](https://deploypete.com/benchmarks/) — throughput by server size
+- 📊 [Benchmarks](https://deploypete.com/benchmarks/) — throughput by server size (validate them yourself with the [k6 harness in `benchmarks/`](benchmarks/README.md))
 - ⚖️ [Compare](https://deploypete.com/compare/) — vs LocalWP, DevKinsta, Docker, WP Engine, WordPress VIP
 - 💬 [Contact & Enterprise](https://deploypete.com/contact-us/)
 

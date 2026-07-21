@@ -1,0 +1,162 @@
+{
+    "metrics": {
+        "http_req_receiving": {
+            "p(90)": 51.9156,
+            "p(95)": 53.5098,
+            "avg": 21.234274900398415,
+            "min": 0.02,
+            "med": 0.091,
+            "max": 890.845
+        },
+        "data_received": {
+            "count": 13246289,
+            "rate": 43942.97752433081
+        },
+        "iteration_duration": {
+            "med": 1495.721333,
+            "max": 2489.680375,
+            "p(90)": 1747.001541,
+            "p(95)": 1891.0419164999994,
+            "avg": 1540.093974470119,
+            "min": 673.488875
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 2
+        },
+        "http_req_tls_handshaking": {
+            "avg": 24.763013280212473,
+            "min": 0,
+            "med": 0,
+            "max": 556.502,
+            "p(90)": 59.2812,
+            "p(95)": 61.52719999999999
+        },
+        "http_req_sending": {
+            "med": 0.103,
+            "max": 2.295,
+            "p(90)": 0.18780000000000002,
+            "p(95)": 0.214,
+            "avg": 0.13134926958831317,
+            "min": 0.05
+        },
+        "checkouts_failed": {
+            "count": 1,
+            "rate": 0.0033173802507502903
+        },
+        "vus_max": {
+            "value": 30,
+            "min": 30,
+            "max": 30
+        },
+        "http_reqs": {
+            "count": 753,
+            "rate": 2.4979873288149688
+        },
+        "http_req_duration": {
+            "med": 328.731,
+            "max": 1243.741,
+            "p(90)": 895.4198,
+            "p(95)": 922.9028,
+            "avg": 468.4626507304115,
+            "min": 67.716
+        },
+        "data_sent": {
+            "count": 827061,
+            "rate": 2743.6758275657858
+        },
+        "iterations": {
+            "count": 251,
+            "rate": 0.8326624429383229
+        },
+        "http_req_failed": {
+            "passes": 1,
+            "fails": 752,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0.0013280212483399733
+        },
+        "http_req_blocked": {
+            "max": 606.804,
+            "p(90)": 110.8098,
+            "p(95)": 114.5088,
+            "avg": 43.057173970783566,
+            "min": 0,
+            "med": 0.001
+        },
+        "http_req_waiting": {
+            "p(90)": 893.054,
+            "p(95)": 920.0201999999999,
+            "avg": 447.0970265604248,
+            "min": 67.517,
+            "med": 277.631,
+            "max": 1216.102
+        },
+        "http_req_connecting": {
+            "avg": 18.243618857901716,
+            "min": 0,
+            "med": 0,
+            "max": 406.158,
+            "p(90)": 51.0032,
+            "p(95)": 52.630199999999995
+        },
+        "checks": {
+            "passes": 1003,
+            "fails": 1,
+            "value": 0.999003984063745
+        },
+        "checkouts_completed": {
+            "count": 250,
+            "rate": 0.8293450626875726,
+            "thresholds": {
+                "count>=238": false
+            }
+        },
+        "http_req_duration{expected_response:true}": {
+            "max": 1243.741,
+            "p(90)": 895.4564,
+            "p(95)": 922.9364,
+            "avg": 468.9955585106381,
+            "min": 148.919,
+            "med": 328.842
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "plan form redirected to checkout": {
+                    "name": "plan form redirected to checkout",
+                    "path": "::plan form redirected to checkout",
+                    "id": "8595769a8eef0b4c9a8875dc76b05649",
+                    "passes": 251,
+                    "fails": 0
+                },
+                "checkout page status 200": {
+                    "name": "checkout page status 200",
+                    "path": "::checkout page status 200",
+                    "id": "31f5c6711853e21b42e4b72bf0655e31",
+                    "passes": 251,
+                    "fails": 0
+                },
+                "checkout page has Woo form": {
+                    "passes": 251,
+                    "fails": 0,
+                    "name": "checkout page has Woo form",
+                    "path": "::checkout page has Woo form",
+                    "id": "7127d61cf61af90c7594ef3c9e50c34f"
+                },
+                "order placed (result=success)": {
+                    "id": "cd942a5c91953f5bc55f8f6cde06b431",
+                    "passes": 250,
+                    "fails": 1,
+                    "name": "order placed (result=success)",
+                    "path": "::order placed (result=success)"
+                }
+            }
+    }
+}

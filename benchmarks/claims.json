@@ -1,0 +1,27 @@
+{
+  "_source": "https://deploypete.com/benchmarks/",
+  "_notes": "cached_visits_month and concurrent_users are [low, high] ranges. avg_page_load_s is the claimed average full-page load range; k6 measures server response time (http_req_duration), which must fit inside it. seconds_per_month = 2592000 (30 days).",
+  "tiers": {
+    "8ram-4cpu": {
+      "price_usd_month": 48,
+      "cached_visits_month": [216000000, 432000000],
+      "concurrent_users": [5000, 10000],
+      "avg_page_load_s": [0.3, 0.5],
+      "checkouts_per_min": 20
+    },
+    "16ram-4cpu": {
+      "price_usd_month": 96,
+      "cached_visits_month": [432000000, 864000000],
+      "concurrent_users": [10000, 20000],
+      "avg_page_load_s": [0.2, 0.4],
+      "checkouts_per_min": 40
+    },
+    "32ram-8cpu": {
+      "price_usd_month": 192,
+      "cached_visits_month": [864000000, 1700000000],
+      "concurrent_users": [20000, 40000],
+      "avg_page_load_s": [0.2, 0.4],
+      "checkouts_per_min": 160
+    }
+  }
+}

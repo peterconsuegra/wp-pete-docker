@@ -109,6 +109,12 @@ build/
 # pnpm-lock.yaml
 
 # =========================
+# Python artifacts (benchmark harness)
+# =========================
+__pycache__/
+*.py[cod]
+
+# =========================
 # Composer / PHP artifacts
 # =========================
 vendor/

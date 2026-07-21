@@ -35,6 +35,12 @@ export const options = {
       gracefulStop: '30s',
     },
   },
+  // Pass/fail gates so a run validates itself (k6 exits non-zero on breach).
+  // Override per run: -e ERR_RATE=0.05 -e P95_MS=2000
+  thresholds: {
+    http_req_failed: [`rate<${__ENV.ERR_RATE || '0.01'}`],
+    http_req_duration: [`p(95)<${__ENV.P95_MS || '1000'}`],
+  },
 };
 
 const BASE = __ENV.BASE_URL || 'https://staging2.saveaplaya.org';
