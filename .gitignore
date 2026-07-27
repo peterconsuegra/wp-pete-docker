@@ -87,7 +87,7 @@ apache_sites_enabled/
 pma_data/
 ssl_data/
 apache_logs/
-
+docker-compose.yml
 # =========================
 # Node / front-end artifacts
 # =========================

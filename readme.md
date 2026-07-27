@@ -106,7 +106,7 @@ The same stack runs on any Ubuntu 24.04 server. One command installs it, auto-tu
 curl -o pete_installer.sh -L https://deploypete.com/pete_installer.sh && chmod 755 pete_installer.sh && sudo ./pete_installer.sh
 ```
 
-Ready-made server profiles are included: `docker-compose.prod-8ram-4cpu.yml`, `docker-compose.prod-16ram-4cpu.yml`, `docker-compose.prod-16ram-6cpu.yml`, `docker-compose.prod-32ram-8cpu.yml`. See the full per-cloud guides for [Linode, Hetzner, Google Cloud & AWS](https://deploypete.com/deploying-to-production/) and the [performance benchmarks by server size](https://deploypete.com/benchmarks/).
+Ready-made server profiles are included: `docker-compose.prod-8ram-4cpu.yml`, `docker-compose.prod-16ram-4cpu.yml`, `docker-compose.prod-16ram-6cpu.yml`, `docker-compose.prod-32ram-8cpu.yml`. The installer detects the server's RAM and CPU count and copies the matching profile to `docker-compose.yml`, so on a production box every `docker compose …` command run from `/opt/pete-panel` targets the right stack with no `-f` flag. `docker-compose.yml` is generated and git-ignored; `/opt/pete-panel/.compose_profile` records which profile it came from. See the full per-cloud guides for [Linode, Hetzner, Google Cloud & AWS](https://deploypete.com/deploying-to-production/) and the [performance benchmarks by server size](https://deploypete.com/benchmarks/).
 
 To bring an existing site in, use the free [Pete Converter](https://deploypete.com/plugins/) to export any WordPress site into Pete format and import it into a playground or production.
 
