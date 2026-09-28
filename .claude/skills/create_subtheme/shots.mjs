@@ -51,10 +51,15 @@ if (mode === 'design') {
   let screens = [];
   if (flow) {
     const txt = fs.readFileSync(path.join(src, flow), 'utf8');
-    for (const m of txt.matchAll(/\{\s*n:\s*'([^']+)',\s*title:\s*'([^']+)',\s*src:\s*'([^']+)'/g)) screens.push({ n: m[1], src: m[3] });
+    // Flow entries: { n, title, src } (lp2) or { id, label, src } (lp3); each src once.
+    const seen = new Set();
+    for (const m of txt.matchAll(/\{\s*(?:n|id):\s*'([^']+)',\s*(?:title|label):\s*'([^']+)',\s*src:\s*'([^']+)'/g)) {
+      if (!seen.has(m[3])) { seen.add(m[3]); screens.push({ n: m[1], src: m[3] }); }
+    }
   }
   if (!screens.length) screens = fs.readdirSync(src).filter(f => f.endsWith('.dc.html') && !f.startsWith('Flujo')).map((f, i) => ({ n: String(i + 1), src: f }));
   for (const s of screens) await shoot(browser, `http://127.0.0.1:${port}/${s.src}`, `design-${s.n}-${s.src.replace(/\.dc\.html.*$/, '')}`);
+  // Note: the design's cart lives in its localStorage; each render starts empty (default demo state).
   server.close();
 } else {
   await shoot(browser, src, name || 'site');

@@ -110,8 +110,17 @@ To do while porting each design:
    they are templates, not static pages: `<sc-if value="{{ x }}">`, `<sc-for list="{{ l }}" as="i">`,
    `{{ expr }}`, `onClick`, `style-hover` / `style-active`, and a
    `class Component extends DCLogic` script holding the data arrays and `renderVals()`.
+   A design may also ship components (lp3: `SPHeader`, `SPFooter`, `SPFaq`, `SPReviews`,
+   `SPLadder`, `SPTrust`, imported with `<dc-import name="…">`): port each once as a part in
+   `variants/<key>/parts/` and read their `data-props` for the props the screens pass. Check the
+   copy for emoji (Pedro's rule; lp3's offer title had two):
+   `python3 -c "import re,glob;[print(f,m) for f in glob.glob('*.dc.html') for m in re.findall('[\U0001F300-\U0001FAFF\u2600-\u27BF]+',open(f,encoding='utf-8').read())]"`.
 2. **Reference renders**: `node shots.mjs design <export_dir> <out_dir>` (needs internet: the
-   export loads React and Babel from unpkg). Writes `design-<n>-<Screen>-390/1440(-top).png`.
+   export loads React and Babel from unpkg). It renders every state the `Flujo` file lists
+   (`{ n, title, src }` or `{ id, label, src }` entries, e.g. `Producto.dc.html?pack=u1`) and
+   writes `design-<n>-<Screen>-390/1440(-top).png`. Look at the desktop renders for defects the
+   design itself has: lp3's pack ladder did not fit its 7/12 column at 1440 (names under the price
+   chips, the button cut off); fix those in the port and tell Pedro.
 3. **Images**: `python3 import_images.py <export_dir> <theme_worktree>` (Pillow; if the default
    python3 lacks it, use `~/.pyenv/versions/3.12.7/bin/python3`). It only adds new images and takes
    each file from the master library (same path) when it is there, because claude.ai/design strips
@@ -123,8 +132,16 @@ To do while porting each design:
      `isDesk` → classes `lp-m` / `lp-d` (1024 px); FAQ → `<details class="lp-faq">` (+ nested
      `lp-formula` for "Ver fórmula completa"); scroll rows `data-row` + arrows
      `data-scroll="-1|1"` (class `lp-arrow`); gallery `data-gallery`, `data-gallery-row`,
-     `data-gallery-dot`, `data-gallery-step`; sticky bar `.lp-sticky` (+ `data-sticky-anchor` on
-     the buy block); videos `data-embed` (+ `data-embed-kind="reel"`); cart steppers `data-qty-step`.
+     `data-gallery-dot` (dots and thumbnails alike, both get `.is-on`), `data-gallery-step`; sticky
+     bar `.lp-sticky` (+ `data-sticky-anchor` on the buy block, or `data-sticky-after="760"` on the
+     bar for a scroll threshold); videos `data-embed` (+ `data-embed-kind="reel"`); cart steppers
+     `data-qty-step`; checkout summary `data-toggle data-open-desktop="<px>"`.
+   - A design with another breakpoint (lp3 switches at 960, `isD = w >= 960`) gets its own
+     switch and grid classes in its style.css (`lp3-m` / `lp3-d`, `lp3-hero`, … see
+     `variants/lp3/style.css`); values computed from the width (grid columns, sticky, order) move
+     there too, as media queries or, for a component inside a column, container queries.
+   - A variant's own `parts/arrows.php` whose pair shows at every width (lp3) returns nothing for
+     `array( 'phone' => true )`: the shared sections ask for a desktop and a phone pair.
    - Add-to-cart buttons become `<a class="lp-btn|lp-btn-ghost" rel="nofollow" href="$pack['add']">`.
    - Live data only: `sap_lp_packs()`, `sap_lp_pack_by_id()`, `sap_lp_pack_extras()`,
      `sap_lp_units_sold()`, `sap_lp_money()`. Shared content comes from `variants/_shared/data.php`
