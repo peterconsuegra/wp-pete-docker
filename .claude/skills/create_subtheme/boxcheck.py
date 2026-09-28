@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """List the design elements whose size changes under lp.css's border-box.
 
-The export renders without a CSS reset, so its divs, links, spans and text inputs are
-content-box (a padded or bordered box grows by its padding and border); lp.css makes everything
-inside .sap-lp border-box. An element with a width, min-width or flex-basis plus side padding or
+lp.css makes everything inside .sap-lp border-box. An export whose screens set the same
+*{box-sizing:border-box} (lp2, lp3) already matches and gets no list. Without it (lp4) the
+divs, links, spans and text inputs are content-box (a padded or bordered box grows by its
+padding and border). An element with a width, min-width or flex-basis plus side padding or
 borders, or a height or min-height plus top/bottom padding or borders, therefore comes out
 smaller in the port: give it box-sizing:content-box inline (lp4: the cart summary was 20 px
 narrow, the stepper and coupon field 2 px short, the step cards wrapped differently at 1024).
@@ -65,12 +66,37 @@ def sides(decls):
     return v, h
 
 
+def border_box_reset(css):
+    """True when a rule for * (alone or in a selector list) sets box-sizing:border-box."""
+    for sel, body in re.findall(r'([^{}]+)\{([^}]*)\}', css):
+        if re.search(r'box-sizing\s*:\s*border-box', body) and any(x.strip() == '*' for x in sel.split(',')):
+            return True
+    return False
+
+
+def has_reset(page):
+    css = ' '.join(re.findall(r'<style[^>]*>(.*?)</style>', page, re.S))
+    for href in re.findall(r'<link[^>]+href="([^"]+\.css)"', page):
+        local = os.path.join(src, href)
+        if '://' not in href and os.path.isfile(local):
+            css += ' ' + open(local, encoding='utf-8').read()
+    return border_box_reset(css)
+
+
 src = sys.argv[1] if len(sys.argv) > 1 else '.'
-found = 0
-for f in sorted(glob.glob(os.path.join(src, '*.dc.html'))):
-    if os.path.basename(f).startswith('Flujo'):
+files = [f for f in sorted(glob.glob(os.path.join(src, '*.dc.html'))) if not os.path.basename(f).startswith('Flujo')]
+pages = {f: open(f, encoding='utf-8').read() for f in files}
+# Components (lp3's SP*, loaded with <dc-import name="…">) render inside the screens that
+# import them, under those screens' rules.
+imported = set(re.findall(r'<dc-import\b[^>]*\bname="([^"]+)"', ' '.join(pages.values())))
+screens = [f for f in files if os.path.basename(f)[:-len('.dc.html')] not in imported] or files
+all_reset = all(has_reset(pages[f]) for f in screens)
+found = skipped = 0
+for f in files:
+    s = pages[f]
+    if has_reset(s) or (all_reset and f not in screens):
+        skipped += 1
         continue
-    s = open(f, encoding='utf-8').read()
     for m in re.finditer(r'<([a-z0-9-]+)\b[^>]*?style="([^"]*)"[^>]*>', s):
         tag, st = m.group(1), m.group(2)
         if 'box-sizing:border-box' in st.replace(' ', '') or tag in ('button', 'select'):
@@ -88,4 +114,7 @@ for f in sorted(glob.glob(os.path.join(src, '*.dc.html'))):
             line = s.count('\n', 0, m.start()) + 1
             text = ' '.join(re.sub(r'<[^>]+>', ' ', s[m.end():m.end() + 300]).split())[:44]
             print('%s:%d  <%s> %s | %s' % (os.path.basename(f), line, tag, ', '.join(hits)[:48], text))
-print('%d element(s) to give box-sizing:content-box in the port' % found if found else 'no box-sizing differences')
+if skipped == len(files):
+    print('the export sets *{box-sizing:border-box} like lp.css: no box-sizing differences')
+else:
+    print('%d element(s) to give box-sizing:content-box in the port' % found if found else 'no box-sizing differences')

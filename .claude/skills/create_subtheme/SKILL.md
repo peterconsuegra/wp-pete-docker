@@ -141,14 +141,15 @@ To do while porting each design:
      bar `.lp-sticky` (+ `data-sticky-anchor` on the buy block, or `data-sticky-after="760"` on the
      bar for a scroll threshold); videos `data-embed` (+ `data-embed-kind="reel"`); cart steppers
      `data-qty-step`; checkout summary `data-toggle data-open-desktop="<px>"`.
-   - Box model: the export renders without a CSS reset (content-box; buttons and selects are
-     border-box), while lp.css makes everything border-box, so a padded or bordered box with a set
-     size comes out smaller. `python3 boxcheck.py <export_dir>` lists those divs, links, spans and
-     text inputs (a width or flex-basis with side padding or borders, a height with top/bottom
-     ones); add `box-sizing:content-box` to each one's inline style. lp4 before the fix: the cart
-     summary 20 px narrow, stepper and coupon field 2 px short, and the three step cards in one row
-     at 1024 where the design wraps them 2 + 1. Percentage widths stay border-box (`width:100%`
-     plus padding overflows in the design).
+   - Box model: lp.css makes everything border-box. The lp2 and lp3 exports set the same
+     `*{box-sizing:border-box}` and match; lp4's did not, so it rendered content-box (buttons and
+     selects excepted) and a padded or bordered box with a set size came out smaller in the port.
+     Run `python3 boxcheck.py <export_dir>`: with the reset it says there is nothing to do;
+     without it, it lists those divs, links, spans and text inputs (a width or flex-basis with side
+     padding or borders, a height with top/bottom ones). Add `box-sizing:content-box` to each one's
+     inline style. lp4 before the fix: the cart summary 20 px narrow, stepper and coupon field 2 px
+     short, and the three step cards in one row at 1024 where the design wraps them 2 + 1.
+     Percentage widths stay border-box (`width:100%` plus padding overflows in the design).
    - A design with another breakpoint (lp3 switches at 960, `isD = w >= 960`) gets its own
      switch and grid classes in its style.css (`lp3-m` / `lp3-d`, `lp3-hero`, … see
      `variants/lp3/style.css`); values computed from the width (grid columns, sticky, order) move
