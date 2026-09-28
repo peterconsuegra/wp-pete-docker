@@ -56,6 +56,10 @@ if (mode === 'design') {
     for (const m of txt.matchAll(/\{\s*(?:n|id):\s*'([^']+)',\s*(?:title|label):\s*'([^']+)',\s*src:\s*'([^']+)'/g)) {
       if (!seen.has(m[3])) { seen.add(m[3]); screens.push({ n: m[1], src: m[3] }); }
     }
+    // lp5: the flow shows <iframe src="Producto.dc.html?pack=3"> frames instead; numbered in order.
+    if (!screens.length) for (const m of txt.matchAll(/<iframe\b[^>]*\bsrc="([^"]+)"/g)) {
+      if (!seen.has(m[1])) { seen.add(m[1]); screens.push({ n: String(screens.length + 1), src: m[1] }); }
+    }
   }
   if (!screens.length) screens = fs.readdirSync(src).filter(f => f.endsWith('.dc.html') && !f.startsWith('Flujo')).map((f, i) => ({ n: String(i + 1), src: f }));
   for (const s of screens) await shoot(browser, `http://127.0.0.1:${port}/${s.src}`, `design-${s.n}-${s.src.replace(/\.dc\.html.*$/, '')}`);

@@ -30,7 +30,7 @@ lp1 is the current design and never gets a folder. Built and refined with Pedro 
   (shared content); `pages.css` + `pages/` (the site's other pages); `parts/` (arrows, clean-up
   videos, post card, posts row). `variants/_img/`: every design's images as WebP + `manifest.json`.
 - Master image library (shared with claude.ai/design): `/Volumes/MacPro/SaveAPlaya2026/LandingPagesMachine/Imagenes`.
-- Tools in this folder: `import_images.py`, `imgcheck.py`, `boxcheck.py`, `shots.mjs`, `sync_theme.sh`, `jscheck.mjs`, `rowscheck.mjs`.
+- Tools in this folder: `import_images.py`, `imgcheck.py`, `boxcheck.py`, `shots.mjs`, `scrollshots.mjs`, `sync_theme.sh`, `jscheck.mjs`, `rowscheck.mjs`.
 - Dev container: `wp-pete-docker-php-1`, WP-CLI as `docker exec -u www-data -w /var/www/html/<folder> wp-pete-docker-php-1 wp …`.
 
 ## How the switch works (already built, do not rebuild)
@@ -106,7 +106,8 @@ To do while porting each design:
 ## Steps
 
 1. **Unzip** to the scratchpad. Screens are `*.dc.html` plus a `Flujo *.dc.html` listing demo
-   states (`?pack=`, `?demo=1`, `?vacio=1`, `&paso=confirmacion`). Read every screen file in full:
+   states (`?pack=`, `?demo=1`, `?vacio=1`, `&paso=confirmacion`; lp5 shows them as
+   `<iframe src="…">` frames, e.g. `?view=confirmacion`). Read every screen file in full:
    they are templates, not static pages: `<sc-if value="{{ x }}">`, `<sc-for list="{{ l }}" as="i">`,
    `{{ expr }}`, `onClick`, `style-hover` / `style-active`, and a
    `class Component extends DCLogic` script holding the data arrays and `renderVals()`.
@@ -122,7 +123,12 @@ To do while porting each design:
    the design itself has, fix them in the port and tell Pedro: lp3's pack ladder did not fit its
    7/12 column at 1440 (names under the price chips, the button cut off); lp4's product gallery
    kept its desktop `top:96px` on phones (`galPos: d ? 'sticky' : 'relative'`), so it sat 96 px low
-   over the title (the port makes it sticky on desktop only).
+   over the title; lp5's gallery was `position:sticky` at every width, so on phones the photo stayed
+   pinned over the title, the pack chips and the buy button while scrolling (both ports: sticky on
+   desktop only). A full-page shot cannot show sticky or fixed elements: for every screen with
+   one, run `node scrollshots.mjs design <export_dir> "Producto.dc.html?pack=3" 390 <out> 0 500 900 1300`
+   and look at the strip. Use it on the port too (`scrollshots.mjs site <key> "<url>" …`), for
+   the buy bar: in `shots.mjs site` full-page shots it shows up mid-page, which is not real.
 3. **Images**: `python3 import_images.py <export_dir> <theme_worktree>` (Pillow; if the default
    python3 lacks it, use `~/.pyenv/versions/3.12.7/bin/python3`). It only adds new images and takes
    each file from the master library (same path) when it is there, because claude.ai/design strips
@@ -130,7 +136,11 @@ To do while porting each design:
    warns about an SVG that still has classes but no styles. Never skip it: `sap_lp_img()` prints
    nothing for a path missing from `manifest.json`, so lp4's first render had four blank photos and
    no error. `sync_theme.sh` now runs `imgcheck.py` and refuses to sync until every literal
-   `'Folder/file.ext'` in `variants/` is in the manifest.
+   `'Folder/file.ext'` in `variants/` is in the manifest. lp5's export named the folder `img/`
+   (the importer reads either) and added two it skips: `icons/` (Lucide SVGs with their color in
+   the stroke; draw them inline, see step 4) and `opt/` (the design tool's downscaled copies of
+   library photos: the importer prints the full-size path to use instead, e.g.
+   `opt/_DSC9183.jpg: use BailaSinPararMayoPhotos/_DSC9183.jpg`).
 4. **Port each screen** to `variants/<key>/<screen>.php`, following `variants/lp2/` and
    "Pedro's standing decisions":
    - Keep the design's inline styles verbatim. Its state becomes shared hooks: `isMobile` /
@@ -150,11 +160,19 @@ To do while porting each design:
      inline style. lp4 before the fix: the cart summary 20 px narrow, stepper and coupon field 2 px
      short, and the three step cards in one row at 1024 where the design wraps them 2 + 1.
      Percentage widths stay border-box (`width:100%` plus padding overflows in the design).
+   - A design that loads its design system's `_ds/…/styles.css` (lp4, lp5) inherits
+     `text-wrap: pretty` from its `body` rule (no lone word on a last line): set it on the variant
+     root in style.css (`.sap-lp.sap-lp5 { text-wrap: pretty; }`), or headings wrap a word later
+     than designed. Check the design's `<style>` and `_ds/…/tokens/base.css` for other body rules.
+   - Icons: draw the export's icons inline, never as `<img>` requests: lp2 to lp4 wrote the Lucide
+     paths into the markup; lp5 has `sap_lp5_icon( $name, $color, $size, $style, $class )` in its
+     functions.php (a variant's functions.php loads for its visitors on every screen and page).
    - A design with another breakpoint (lp3 switches at 960, `isD = w >= 960`) gets its own
      switch and grid classes in its style.css (`lp3-m` / `lp3-d`, `lp3-hero`, … see
      `variants/lp3/style.css`); values computed from the width (grid columns, sticky, order) move
      there too, as media queries or, for a component inside a column, container queries. lp4
-     switches at 900 (`lp4-m` / `lp4-d` plus `lp4-*` size classes, see `variants/lp4/style.css`).
+     switches at 900 (`lp4-m` / `lp4-d` plus `lp4-*` size classes, see `variants/lp4/style.css`),
+     lp5 at 960 like lp3 (`lp5-m` / `lp5-d`).
      A design that sizes itself with `container-type:inline-size` on its root and `cqi` units
      (lp4) measures the whole page, so use media queries and `vw` for `cqi` there.
    - A variant's own `parts/arrows.php` whose pair shows at every width (lp3) returns nothing for
@@ -163,7 +181,8 @@ To do while porting each design:
    - Live data only: `sap_lp_packs()`, `sap_lp_pack_by_id()`, `sap_lp_pack_extras()`,
      `sap_lp_units_sold()`, `sap_lp_money()`. Shared content comes from `variants/_shared/data.php`
      (review rows, creator reels → Instagram embeds, clean-up videos → YouTube with Spanish
-     captions, cause photos, FAQs with the fixed ingredients answer, steps, legal links, menu). A
+     captions, cause photos, FAQs with the fixed ingredients answer, steps, legal links, menu, the
+     Travesía BLU press interview `sap_lp_press()`). A
      design that adds shared content extends `data.php`. Never hardcode prices, counts or links.
    - Images only through `sap_lp_img( 'Folder/file.ext', array( 'alt' => …, 'style' => …, 'loading' => 'eager'|'lazy', 'thumb' => true ) )`
      with the design's path minus `Imagenes/`; first-screen images `eager`; pack thumbnails `thumb`.
@@ -182,7 +201,9 @@ To do while porting each design:
      `-b sap_lp=<key>` it is the variant.
    - The add-to-cart link returns 302 to `/carrito/` with the pack; quantity update and "Eliminar" work.
    - `node shots.mjs site "<url>" <out_dir> site-<screen>` for the home, the Pack Ahorro, 1-unit
-     and Empresa product pages and `/carrito/?lp=<key>&add-to-cart=29087`; compose design vs site
+     and Empresa product pages, `/carrito/?lp=<key>` and `/checkout-2/?lp=<key>` (both with the
+     pre-URL `/carrito/?lp=<key>&add-to-cart=29087`: an empty cart sends the checkout to the cart,
+     and a 360 px header check shot without it shows the cart page); compose design vs site
      side by side (PIL) at 390 and 1440 and fix every real delta. Expected deltas: the live counter
      (dev data), review rows a little taller (image sizes reserved), lazy images not yet loaded,
      the header's cart and menu (added on purpose). Shoot the other pages too:
