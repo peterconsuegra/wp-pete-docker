@@ -30,7 +30,7 @@ lp1 is the current design and never gets a folder. Built and refined with Pedro 
   (shared content); `pages.css` + `pages/` (the site's other pages); `parts/` (arrows, clean-up
   videos, post card, posts row). `variants/_img/`: every design's images as WebP + `manifest.json`.
 - Master image library (shared with claude.ai/design): `/Volumes/MacPro/SaveAPlaya2026/LandingPagesMachine/Imagenes`.
-- Tools in this folder: `import_images.py`, `shots.mjs`, `sync_theme.sh`, `jscheck.mjs`, `rowscheck.mjs`.
+- Tools in this folder: `import_images.py`, `imgcheck.py`, `boxcheck.py`, `shots.mjs`, `sync_theme.sh`, `jscheck.mjs`, `rowscheck.mjs`.
 - Dev container: `wp-pete-docker-php-1`, WP-CLI as `docker exec -u www-data -w /var/www/html/<folder> wp-pete-docker-php-1 wp …`.
 
 ## How the switch works (already built, do not rebuild)
@@ -118,14 +118,19 @@ To do while porting each design:
 2. **Reference renders**: `node shots.mjs design <export_dir> <out_dir>` (needs internet: the
    export loads React and Babel from unpkg). It renders every state the `Flujo` file lists
    (`{ n, title, src }` or `{ id, label, src }` entries, e.g. `Producto.dc.html?pack=u1`) and
-   writes `design-<n>-<Screen>-390/1440(-top).png`. Look at the desktop renders for defects the
-   design itself has: lp3's pack ladder did not fit its 7/12 column at 1440 (names under the price
-   chips, the button cut off); fix those in the port and tell Pedro.
+   writes `design-<n>-<Screen>-390/1440(-top).png`. Look at the renders at both widths for defects
+   the design itself has, fix them in the port and tell Pedro: lp3's pack ladder did not fit its
+   7/12 column at 1440 (names under the price chips, the button cut off); lp4's product gallery
+   kept its desktop `top:96px` on phones (`galPos: d ? 'sticky' : 'relative'`), so it sat 96 px low
+   over the title (the port makes it sticky on desktop only).
 3. **Images**: `python3 import_images.py <export_dir> <theme_worktree>` (Pillow; if the default
    python3 lacks it, use `~/.pyenv/versions/3.12.7/bin/python3`). It only adds new images and takes
    each file from the master library (same path) when it is there, because claude.ai/design strips
    SVG `<style>` blocks (the logos came out black until 2026-09-28) and may recompress photos; it
-   warns about an SVG that still has classes but no styles.
+   warns about an SVG that still has classes but no styles. Never skip it: `sap_lp_img()` prints
+   nothing for a path missing from `manifest.json`, so lp4's first render had four blank photos and
+   no error. `sync_theme.sh` now runs `imgcheck.py` and refuses to sync until every literal
+   `'Folder/file.ext'` in `variants/` is in the manifest.
 4. **Port each screen** to `variants/<key>/<screen>.php`, following `variants/lp2/` and
    "Pedro's standing decisions":
    - Keep the design's inline styles verbatim. Its state becomes shared hooks: `isMobile` /
@@ -136,10 +141,21 @@ To do while porting each design:
      bar `.lp-sticky` (+ `data-sticky-anchor` on the buy block, or `data-sticky-after="760"` on the
      bar for a scroll threshold); videos `data-embed` (+ `data-embed-kind="reel"`); cart steppers
      `data-qty-step`; checkout summary `data-toggle data-open-desktop="<px>"`.
+   - Box model: the export renders without a CSS reset (content-box; buttons and selects are
+     border-box), while lp.css makes everything border-box, so a padded or bordered box with a set
+     size comes out smaller. `python3 boxcheck.py <export_dir>` lists those divs, links, spans and
+     text inputs (a width or flex-basis with side padding or borders, a height with top/bottom
+     ones); add `box-sizing:content-box` to each one's inline style. lp4 before the fix: the cart
+     summary 20 px narrow, stepper and coupon field 2 px short, and the three step cards in one row
+     at 1024 where the design wraps them 2 + 1. Percentage widths stay border-box (`width:100%`
+     plus padding overflows in the design).
    - A design with another breakpoint (lp3 switches at 960, `isD = w >= 960`) gets its own
      switch and grid classes in its style.css (`lp3-m` / `lp3-d`, `lp3-hero`, … see
      `variants/lp3/style.css`); values computed from the width (grid columns, sticky, order) move
-     there too, as media queries or, for a component inside a column, container queries.
+     there too, as media queries or, for a component inside a column, container queries. lp4
+     switches at 900 (`lp4-m` / `lp4-d` plus `lp4-*` size classes, see `variants/lp4/style.css`).
+     A design that sizes itself with `container-type:inline-size` on its root and `cqi` units
+     (lp4) measures the whole page, so use media queries and `vw` for `cqi` there.
    - A variant's own `parts/arrows.php` whose pair shows at every width (lp3) returns nothing for
      `array( 'phone' => true )`: the shared sections ask for a desktop and a phone pair.
    - Add-to-cart buttons become `<a class="lp-btn|lp-btn-ghost" rel="nofollow" href="$pack['add']">`.
@@ -157,8 +173,8 @@ To do while porting each design:
      `woocommerce-cart`, `update_cart`, `apply_coupon`, `wc_get_cart_remove_url()`, and no
      `woocommerce-cart-form` class (WooCommerce's cart.js would replace the markup).
    - `variant.json`: name, idea, source zip, prompt file.
-5. **Sync**: `sync_theme.sh <theme_worktree>` (copies functions.php, inc, templates, variants;
-   lints every PHP file).
+5. **Sync**: `sync_theme.sh <theme_worktree>` (checks the images with `imgcheck.py`, copies
+   functions.php, inc, templates, variants; lints every PHP file).
 6. **Verify** (definition of done):
    - `curl` `/?lp=<key>`: 200, `class="sap-lp sap-<key>"`, `Set-Cookie: sap_lp=<key>`, no
      `legacy-*.css`, no PHP errors. `/` without cookie is still lp1 (and served from cache); with
