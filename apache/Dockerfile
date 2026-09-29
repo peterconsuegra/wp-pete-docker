@@ -102,6 +102,7 @@ RUN apt-get update && \
 COPY modsecurity/modsecurity-apache.conf /etc/apache2/conf-available/modsecurity.conf
 COPY modsecurity/whitelist.conf /etc/modsecurity/whitelist.conf
 COPY modsecurity/pete-tuning.conf /etc/modsecurity/pete-tuning.conf
+COPY modsecurity/pete-after-crs.conf /etc/modsecurity/pete-after-crs.conf
 
 # Ensure modsecurity cache dirs are writable by Apache
 RUN mkdir -p /var/cache/modsecurity \
