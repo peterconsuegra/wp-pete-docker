@@ -1,5 +1,7 @@
 // Lighthouse over a site's pages: performance only, phone and desktop, median of several runs.
-//   node lh.mjs <pages.json> <out_dir> [key ...] [--runs=3] [--form=mobile,desktop] [--compare=<before_dir>]
+//   node lh.mjs <pages.json> <out_dir> [key ...] [--runs=3] [--form=mobile,desktop] [--compare=<before_dir>] [--throttling=devtools]
+// --throttling=devtools for production: simulated throttling from the Mac against a remote server
+// shows a "late paint" real users do not get (Ozone, 2026-09-26).
 // pages.json is /reblock_site's work list (its "site" + each page's "path"; states are skipped).
 // Writes every report (<key>-<form>-<n>.json) and summary.json (per-metric medians) to out_dir and
 // prints the table; --compare prints before → after from another run's summary.json.
@@ -53,6 +55,7 @@ for (const p of pages) {
       const file = path.join(outDir, `${p.key}-${form}-${n}.json`);
       const lhArgs = [url, '--quiet', '--only-categories=performance', '--output=json', `--output-path=${file}`, `--chrome-flags=${FLAGS}`];
       if (form === 'desktop') lhArgs.push('--preset=desktop');
+      if (opts.throttling) lhArgs.push(`--throttling-method=${opts.throttling}`);
       const r = spawnSync(LH, lhArgs, { encoding: 'utf8', timeout: 180000 });
       if (r.status !== 0 || !fs.existsSync(file)) { console.log(`  ${p.key} ${form} run ${n} failed: ${(r.stderr || '').split('\n').slice(-3).join(' ')}`); continue; }
       all.push(metrics(JSON.parse(fs.readFileSync(file, 'utf8'))));

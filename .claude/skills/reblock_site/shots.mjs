@@ -5,7 +5,9 @@
 // Writes <key>-<w>-<mode>.png (full page; pages taller than 15000 px come as -t1, -t2 … tiles, which
 // compare.py stitches) and <key>-<w>-top-<mode>.png (the first screen). --html also saves the rendered
 // DOM as <key>-<w>-<mode>.html: for claude.ai/design templates it is the markup to port. --tag names
-// the files instead of the mode (site before/after a change: --tag=before, --tag=after).
+// the files instead of the mode (site before/after a change: --tag=before, --tag=after). --mask-videos
+// hides videos after settling (layout kept): for before/after shots of one site, where headless
+// Chrome can paint the same video a few frames apart.
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, serveDir, readWork, parseArgs, widthsOf, designUrl, siteUrl, newPage, open, settle, runClicks } from './lib.mjs';
@@ -25,7 +27,7 @@ async function shoot(browser, url, name, tag, widths, clicks) {
     const { ctx, page } = await newPage(browser, w, log);
     await open(page, url);
     await runClicks(page, clicks);
-    await settle(page);
+    await settle(page, { maskVideos: !!opts['mask-videos'] });
     const stem = path.join(outDir, `${name}-${w}`);
     for (const f of fs.readdirSync(outDir)) if (f.startsWith(`${name}-${w}-${tag}`) || f === `${name}-${w}-top-${tag}.png`) fs.unlinkSync(path.join(outDir, f));
     await page.screenshot({ path: `${stem}-top-${tag}.png` });

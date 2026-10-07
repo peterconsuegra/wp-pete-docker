@@ -82,7 +82,7 @@ WP Fastest Cache settings (fixed by `wpfc.sh`):
 ```sh
 mkdir -p "$WORK" && cp "$REPO/.reblock/pages.json" "$WORK/"       # set "site" to DEV_URL if it differs
 node lh.mjs "$WORK/pages.json" "$WORK/lh-before"                    # 3 runs, phone and desktop
-node ../reblock_site/shots.mjs "$WORK/pages.json" site "$WORK/shots" --tag=before
+node ../reblock_site/shots.mjs "$WORK/pages.json" site "$WORK/shots" --tag=before --mask-videos
 node lcpprobe.mjs "$WORK/pages.json" --out="$WORK/speed.json"
 ```
 
@@ -136,7 +136,7 @@ sh wpfc.sh $DEV_URL on "$WORK/backup"
 
 ```sh
 node speedcheck.mjs "$WORK/pages.json"                                              # "speed checks ok"
-node ../reblock_site/shots.mjs "$WORK/pages.json" site "$WORK/shots" --tag=after
+node ../reblock_site/shots.mjs "$WORK/pages.json" site "$WORK/shots" --tag=after --mask-videos
 python3 ../reblock_site/compare.py "$WORK/shots" --pair=before,after --diff         # 0 px differ everywhere
 node ../reblock_site/sitecheck.mjs "$WORK/pages.json" site                          # "all checks ok"
 node lh.mjs "$WORK/pages.json" "$WORK/lh-after" --compare="$WORK/lh-before"
@@ -178,12 +178,33 @@ node lh.mjs "$WORK/pages.json" "$WORK/lh-after" --compare="$WORK/lh-before"
 
 ## Production (only on Pedro's order; never from this skill)
 
-- The theme (with speed.json) as usual for that site.
-- The plugin: clone `peterconsuegra/reblock-page-speed` (or a git bundle) into `wp-content/plugins`
-  and activate it.
-- WP Fastest Cache: the same settings. A save in wp-admin writes the `.htaccess` rules; `wpfc.sh`
-  is dev-only (it assumes the dev container).
-- Then an opcache reset, `rm -rf wp-content/cache/all`, warm the pages, and PSI on the real URL.
+Done this way for theplaymethod.ozonegroup.co on 2026-10-07. The record is in
+`~/Sites/push_page_backups/prod-theplaymethod-before-speed-20261007-1328/ROLLBACK.md`.
+- **Before anything changes:**
+  - production "before" evidence: `shots.mjs` with a pages file whose `site` is the production URL
+    (`--mask-videos`), and `lh.mjs … --form=mobile --throttling=devtools`;
+  - a `/root/deploy/release-<site>-<ts>/` folder on the server with the database
+    (`wp db export … --skip-ssl` if the TLS error appears), a tar of the theme, `.htaccess`, the
+    plugin list, and a copy on the Mac.
+- **Code from git, never file copies:**
+  - Tag the theme release (`v<style.css Version>`), then `git bundle create x.bundle main <tags>`
+    for the theme and the plugin. scp them to the release folder.
+  - In the container, `git clone` each bundle beside the live folder (`.new`), `merge --ff-only
+    <tag>`, then `git branch -m master main` (a bundle without HEAD clones onto "master").
+    Set `origin` to the GitHub URL.
+  - **Theme: `git sparse-checkout set --no-cone "/*" "!/.reblock/"`, then `update-index
+    --refresh` and `sparse-checkout reapply`.** The server blocks `.git` and dot-files but not
+    `.reblock/`, which was public for ~10 minutes on The Play Method.
+  - `diff -rq` the live folder against the new one: expect only this release's files.
+  - Then chown -R www-data, swap with `mv` (the old folder goes out of the web root), and run
+    `opcache-refresh` at once (validate_timestamps=0 on Pete Panel production).
+- **Plugin:** activate it. **WP Fastest Cache:** `wp plugin install wp-fastest-cache --activate`,
+  then the same settings through `wp --url=<site>/wp-cli/ eval-file <the settings script>` (the
+  same `saveOption()` as `wpfc.sh`, uploaded as a file: no quoting). Then `opcache-refresh`,
+  `rm -rf wp-content/cache/all`, and warm the pages.
+- **Verify on production:** speedcheck and sitecheck with the production pages file, shots after
+  vs before (`--mask-videos`), `lh.mjs --throttling=devtools --compare`, and curl the headers
+  (`?rps-check=1` must say no-cache). Write `ROLLBACK.md` into both copies of the release folder.
 - Judge production by PSI, or Lighthouse with `--throttling-method=devtools`. Simulated runs from
   the Mac against production show a "late paint" that real users do not get (Ozone, 2026-09-26).
 - Pete Panel's performance.conf gives PHP-rendered HTML a month in browsers. The "no browser

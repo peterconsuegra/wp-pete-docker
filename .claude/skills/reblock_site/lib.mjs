@@ -106,7 +106,9 @@ export async function open(page, url) {
 
 // Deterministic render: no animation or transition, every lazy image in, videos on their first
 // frame, fonts loaded. Both sides go through the same steps, so what is left is the port.
-export async function settle(page) {
+// maskVideos: videos hidden after settling (layout kept). For before/after shots of one site, where
+// the files are the same and headless Chrome can paint a video a few frames apart between runs.
+export async function settle(page, { maskVideos = false } = {}) {
   await page.addStyleTag({ content: '*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important;caret-color:transparent!important}' }).catch(() => {});
   await page.evaluate(async () => {
     // Instant scrolls: a design with scroll-behavior:smooth would still be moving at the screenshot.
@@ -137,6 +139,7 @@ export async function settle(page) {
     })));
     await document.fonts.ready;
   }).catch(e => console.log('  settle: ' + e.message.split('\n')[0]));
+  if (maskVideos) await page.addStyleTag({ content: 'video{visibility:hidden!important}' }).catch(() => {});
   await page.waitForTimeout(500);
 }
 
