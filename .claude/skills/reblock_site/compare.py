@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Design and port side by side, from the PNGs shots.mjs and measure.mjs --shots write.
 
-Usage: compare.py <shots_dir> [name_prefix ...] [--diff] [--max-width=2000]
-Pairs every <name>-design.png with <name>-site.png (tiles -design-t1.png … are stitched first) and
+Usage: compare.py <shots_dir> [name_prefix ...] [--diff] [--max-width=2000] [--pair=design,site]
+Pairs every <name>-design.png with <name>-site.png (tiles -design-t1.png … are stitched first; --pair
+names other tags, e.g. --pair=before,after for a site before and after a change) and
 writes <name>-cmp.png: design left, site right, a label with both heights. --diff adds a third column,
 the pixel difference brightened (only meaningful down to the first height change). Prints the
 heights and how many pixels differ (by more than 24 levels, over the shared area: re-encoded
@@ -22,6 +23,7 @@ if not args:
 shots = args[0]
 prefixes = args[1:]
 max_w = int(opts.get('max-width', 2000))
+left, right = opts.get('pair', 'design,site').split(',')
 GAP, LABEL = 24, 30
 
 
@@ -43,14 +45,14 @@ def load(path_png):
 
 names = set()
 for f in os.listdir(shots):
-    m = re.match(r'(.+)-design(?:-t\d+)?\.png$', f)
+    m = re.match(r'(.+)-' + re.escape(left) + r'(?:-t\d+)?\.png$', f)
     if m and (not prefixes or any(m.group(1).startswith(p) for p in prefixes)):
         names.add(m.group(1))
 
 rows = []
 for name in sorted(names):
-    d = load(os.path.join(shots, name + '-design.png'))
-    s = load(os.path.join(shots, name + '-site.png'))
+    d = load(os.path.join(shots, name + '-' + left + '.png'))
+    s = load(os.path.join(shots, name + '-' + right + '.png'))
     if s is None:
         rows.append((name, d.height, None, None))
         continue
@@ -67,17 +69,17 @@ for name in sorted(names):
     out = Image.new('RGB', (width, height), (235, 235, 235))
     x = 0
     draw = ImageDraw.Draw(out)
-    labels = ['design %d px' % d.height, 'site %d px  (%+d)' % (s.height, s.height - d.height), 'difference']
+    labels = ['%s %d px' % (left, d.height), '%s %d px  (%+d)' % (right, s.height, s.height - d.height), 'difference']
     for c, label in zip(cols, labels):
         out.paste(c, (x, LABEL))
-        draw.text((x + 6, 8), '%s · %s' % (name, label), fill=(200, 0, 0) if 'site' in label and s.height != d.height else (0, 0, 0))
+        draw.text((x + 6, 8), '%s · %s' % (name, label), fill=(200, 0, 0) if label.startswith(right) and s.height != d.height else (0, 0, 0))
         x += c.width + GAP
     if out.width > max_w:
         out = out.resize((max_w, round(out.height * max_w / out.width)), Image.LANCZOS)
-    out.save(os.path.join(shots, name + '-cmp.png'))
+    out.save(os.path.join(shots, name + ('-cmp.png' if (left, right) == ('design', 'site') else '-%s-%s-cmp.png' % (left, right))))
     rows.append((name, d.height, s.height, differ))
 
-print('%-40s %8s %8s %6s %12s' % ('name', 'design', 'site', 'Δ', 'px differ'))
+print('%-40s %8s %8s %6s %12s' % ('name', left, right, 'Δ', 'px differ'))
 for name, dh, sh, differ in rows:
     if sh is None:
         print('%-40s %8d %8s %6s' % (name, dh, '-', 'no site shot'))

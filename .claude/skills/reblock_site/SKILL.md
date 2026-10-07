@@ -39,8 +39,8 @@ Playwright from the ozone-design-system install (`PLAYWRIGHT_DIR` overrides it) 
 | Tool | What it does |
 |---|---|
 | `inventory.mjs <export> <WORK> --site=URL` | Renders every page. Prints pages, landmarks, header/footer variants per page, links and placeholders, forms, media, breakpoints, fonts, the JS hooks, external hosts, asset warnings and the README. Writes `pages.json` (the work list every tool reads) and `inventory.json`. |
-| `shots.mjs <pages.json> design\|site <out> [keys] [--html]` | Full-page and first-screen PNGs at 390 and 1440. `--html` saves the rendered DOM: the markup to port for claude.ai/design templates. |
-| `compare.py <shots> [prefix] [--diff]` | Design and site side by side (`*-cmp.png`), with heights. |
+| `shots.mjs <pages.json> design\|site <out> [keys] [--html] [--tag=<name>]` | Full-page and first-screen PNGs at 390 and 1440. `--html` saves the rendered DOM: the markup to port for claude.ai/design templates. `--tag` names the files (`before`/`after` around a change). |
+| `compare.py <shots> [prefix] [--diff] [--pair=design,site]` | Side by side (`*-cmp.png`) with heights and the pixels that differ; `--pair=before,after` compares a site with itself. |
 | `measure.mjs <pages.json> [keys] [--deep=<class>] [--shots=<dir>]` | Every landmark's position and size, design vs site, matched by class; `--deep` element by element inside one section. |
 | `sitecheck.mjs <pages.json> design\|site [keys]` | Console errors, failed requests, PHP warnings, broken images, external hosts, overflow from 360 to 1600, the menu, every internal link (incl. links that silently render the front page). |
 | `scaffold.py <REPO> --slug= --name= [--source= --site=]` | Starts the theme from `scaffold/`. |
@@ -229,3 +229,6 @@ For each page:
   Show results early (the home checkpoint).
 - Rollback on the dev site: `wp theme activate <previous theme>`, restore the noted options, delete
   the pages the run created.
+
+Next step for a finished site: `/speed_site DEV_URL` (Core Web Vitals, WP Fastest Cache), which
+builds on this run's `.reblock/pages.json` and pixel tools.

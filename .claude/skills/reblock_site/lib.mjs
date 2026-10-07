@@ -119,7 +119,18 @@ export async function settle(page) {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.querySelectorAll('img[loading="lazy"]').forEach(i => { i.loading = 'eager'; });
     await Promise.all([...document.images].filter(i => !i.complete).map(i => new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 5000); })));
-    document.querySelectorAll('video').forEach(v => { try { v.pause(); v.currentTime = 0; } catch (e) { /* not loaded */ } });
+    // Videos with a file (late-loaded ones included) show their first frame, not a blank box.
+    await Promise.all([...document.querySelectorAll('video')].filter(v => v.getAttribute('src') || v.querySelector('source[src]'))
+      .map(v => (v.readyState >= 2 ? null : new Promise(r => { v.addEventListener('loadeddata', r, { once: true }); setTimeout(r, 5000); }))));
+    // Every loaded video on its first frame. Always seek, even at 0: a video that has not played yet
+    // still shows its poster, and only a seek (or playback) replaces it with the frame.
+    await Promise.all([...document.querySelectorAll('video')].map(v => new Promise(r => {
+      try { v.pause(); } catch (e) { /* not loaded */ }
+      if (v.readyState < 1) return r();
+      v.addEventListener('seeked', r, { once: true });
+      setTimeout(r, 3000);
+      v.currentTime = 0;
+    })));
     await document.fonts.ready;
   }).catch(e => console.log('  settle: ' + e.message.split('\n')[0]));
   await page.waitForTimeout(500);

@@ -1,10 +1,11 @@
 // Screenshots of the design (the export, served locally) and of the port (the dev site), same widths,
 // same settling, so compare.py can put them side by side.
-//   node shots.mjs <pages.json> design|site <out_dir> [key ...] [--widths=390,1440] [--html]
+//   node shots.mjs <pages.json> design|site <out_dir> [key ...] [--widths=390,1440] [--html] [--tag=<name>]
 //   node shots.mjs url <url> <out_dir> <name> [--widths=390,1440]
 // Writes <key>-<w>-<mode>.png (full page; pages taller than 15000 px come as -t1, -t2 … tiles, which
 // compare.py stitches) and <key>-<w>-top-<mode>.png (the first screen). --html also saves the rendered
-// DOM as <key>-<w>-<mode>.html: for claude.ai/design templates it is the markup to port.
+// DOM as <key>-<w>-<mode>.html: for claude.ai/design templates it is the markup to port. --tag names
+// the files instead of the mode (site before/after a change: --tag=before, --tag=after).
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, serveDir, readWork, parseArgs, widthsOf, designUrl, siteUrl, newPage, open, settle, runClicks } from './lib.mjs';
@@ -47,7 +48,7 @@ async function shoot(browser, url, name, tag, widths, clicks) {
 
 const browser = await chromium.launch();
 if (first === 'url') {
-  await shoot(browser, mode, rest[0] || 'page', 'site', widthsOf(opts, null), []);
+  await shoot(browser, mode, rest[0] || 'page', opts.tag || 'site', widthsOf(opts, null), []);
 } else {
   const { cfg, pages } = readWork(first);
   const want = rest.length ? pages.filter(p => rest.includes(p.key)) : pages;
@@ -57,7 +58,7 @@ if (first === 'url') {
   for (const p of want) {
     const url = mode === 'design' ? designUrl(base, p) : siteUrl(cfg, p);
     const clicks = mode === 'site' && p.siteClick ? p.siteClick : p.click;
-    await shoot(browser, url, p.key, mode, widthsOf(opts, cfg), clicks);
+    await shoot(browser, url, p.key, opts.tag || mode, widthsOf(opts, cfg), clicks);
   }
   if (server) server.close();
 }
