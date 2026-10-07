@@ -83,6 +83,8 @@ services:
       context: ./db
       args:
         SERVER: 16ram-4cpu
+    restart: always
+    stop_grace_period: 2m      # let InnoDB flush and shut down cleanly (Docker's default: 10 s, then SIGKILL)
     volumes:
       - db_data:/var/lib/mysql
     env_file: .env

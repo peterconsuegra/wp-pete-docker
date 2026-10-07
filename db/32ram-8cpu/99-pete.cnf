@@ -7,10 +7,12 @@
 
 [mysqld]
 # ---------------------------------------------------------------------
-# 1) InnoDB core sizing – target ~65–70% of the container for buffer pool
-#    Keep headroom for connections, sorts/temp tables, code, and OS cache
+# 1) InnoDB core sizing – target ~50% of the container for buffer pool
+#    Keep headroom for connections, sorts/temp tables, performance_schema and
+#    allocator growth: at 7G (70%) mariadbd reached the 10 GiB cap after
+#    ~2 months up and was OOM-killed
 # ---------------------------------------------------------------------
-innodb_buffer_pool_size        = 7G             # ~70% of 10 GiB cgroup cap
+innodb_buffer_pool_size        = 5G             # ~50% of 10 GiB cgroup cap
 innodb_buffer_pool_instances   = 7              # ~1G per instance
 innodb_log_file_size           = 1G             # ×2 files → 2G total redo
 innodb_log_buffer_size         = 256M
@@ -97,6 +99,15 @@ aria_sort_buffer_size          = 128M
 # ---------------------------------------------------------------------
 ssl                            = 0
 skip_ssl
+
+# ---------------------------------------------------------------------
+# 12) Slow query log – queries over 2 s with plan details, kept in the
+#     data volume so it survives container rebuilds
+# ---------------------------------------------------------------------
+slow_query_log                 = 1
+slow_query_log_file            = /var/lib/mysql/slow.log
+long_query_time                = 2
+log_slow_verbosity             = query_plan
 
 [client]
 ssl=0

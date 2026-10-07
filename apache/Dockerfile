@@ -184,4 +184,8 @@ RUN chmod +x /usr/local/bin/start.sh \
 # --- new: ensure volume will be writable by Pete ---
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 
+# Rotate the per-site logs in /var/www/html/wwwlog (they were never rotated)
+COPY conf/wwwlog.logrotate /etc/logrotate.d/wwwlog
+RUN chmod 0644 /etc/logrotate.d/wwwlog
+
 CMD ["/usr/local/bin/start.sh"]
