@@ -183,6 +183,8 @@ For each page:
    ```
    - Fix in the patterns or `port.css` (each rule commented), never in `site.css`; re-sync,
      re-measure.
+   - compare.py prints the pixels that differ. 0 is the target, which The Play Method reached on
+     every page. Explain any area that differs.
    - Allowed deltas: dynamic content (posts, dates) and what the gate decided; name each one.
    - `wp-content/debug.log` gets nothing from the theme.
 4. **Record**: mark the page in `progress.md` and commit (`git -C "$REPO" add -A && git -C "$REPO" commit -m "<Page> page"`).
@@ -193,6 +195,8 @@ For each page:
 
 - Run measure, `sitecheck site`, shots and compare over every page and state. The links, the menu,
   overflow, posts and the 404 must all be clean. Then themecheck and a clean `debug.log`.
+- Pages without a design (a post, an archive, search, a plain page) get `sitecheck site` through a
+  second pages file listing their paths, and a look at their screenshots (`shots.mjs url`).
 - Zip:
   `git -C "$REPO" archive --format=zip --prefix=$SLUG/ -o ~/Sites/cloned-themes/$SLUG-$(date +%Y%m%d).zip HEAD`.
   `.reblock` stays out of the zip.

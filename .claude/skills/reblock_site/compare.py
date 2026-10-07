@@ -5,7 +5,8 @@ Usage: compare.py <shots_dir> [name_prefix ...] [--diff] [--max-width=2000]
 Pairs every <name>-design.png with <name>-site.png (tiles -design-t1.png … are stitched first) and
 writes <name>-cmp.png: design left, site right, a label with both heights. --diff adds a third column,
 the pixel difference brightened (only meaningful down to the first height change). Prints the
-heights table. Needs Pillow.
+heights and how many pixels differ (by more than 24 levels, over the shared area: re-encoded
+photos stay under that). Needs Pillow.
 """
 import glob
 import os
@@ -51,8 +52,11 @@ for name in sorted(names):
     d = load(os.path.join(shots, name + '-design.png'))
     s = load(os.path.join(shots, name + '-site.png'))
     if s is None:
-        rows.append((name, d.height, None))
+        rows.append((name, d.height, None, None))
         continue
+    w0, h0 = min(d.width, s.width), min(d.height, s.height)
+    mask = ImageChops.difference(d.crop((0, 0, w0, h0)), s.crop((0, 0, w0, h0))).convert('L').point(lambda v: 255 if v > 24 else 0)
+    differ = mask.histogram()[255]
     cols = [d, s]
     if 'diff' in opts:
         w, h = min(d.width, s.width), min(d.height, s.height)
@@ -71,9 +75,12 @@ for name in sorted(names):
     if out.width > max_w:
         out = out.resize((max_w, round(out.height * max_w / out.width)), Image.LANCZOS)
     out.save(os.path.join(shots, name + '-cmp.png'))
-    rows.append((name, d.height, s.height))
+    rows.append((name, d.height, s.height, differ))
 
-print('%-40s %8s %8s %6s' % ('name', 'design', 'site', 'Δ'))
-for name, dh, sh in rows:
-    print('%-40s %8d %8s %6s' % (name, dh, sh if sh is not None else '-', ('%+d' % (sh - dh)) if sh is not None else 'no site shot'))
+print('%-40s %8s %8s %6s %12s' % ('name', 'design', 'site', 'Δ', 'px differ'))
+for name, dh, sh, differ in rows:
+    if sh is None:
+        print('%-40s %8d %8s %6s' % (name, dh, '-', 'no site shot'))
+    else:
+        print('%-40s %8d %8d %+6d %12d' % (name, dh, sh, sh - dh, differ))
 print('wrote %d *-cmp.png in %s' % (sum(1 for r in rows if r[2] is not None), shots))

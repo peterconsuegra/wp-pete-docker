@@ -3,8 +3,9 @@
 `__SLUG__` and `__PREFIX__` stand for the theme's slug and PHP prefix (scaffold.py writes them).
 
 Read this before writing the first pattern. Everything marked *verified* was measured equal to the
-design on WordPress 7.0 with the scaffold's theme.json (The Play Method home, 2026-10-07: every
-section and every classed element within 2 px at 390 and 1440, first screens pixel-identical).
+design with the scaffold's theme.json: The Play Method, 2026-10-07, on WordPress 7.0 (half the home
+page) and then the whole site on 7.1.3. Every page and state came out with 0 pixels different at
+390 and 1440.
 
 ## The principle
 
@@ -19,18 +20,21 @@ kinds of markup:
   `table`, `button`), widgets driven by the design's JS (tabs, filters, sliders, toggles), and any
   element carrying `style`, `data-*`, `aria-*` (beyond `aria-label` on a link) or `role`.
 
-A static block's wrapper may carry only its class and id: any other attribute (style, data-, aria-,
-role) makes the editor reject the block ("unexpected or invalid content"). Such an element goes in an
-island, or the attribute moves to an inner element that is in one.
+A static block's wrapper may carry only its class and id. Any other attribute (style, data-, aria-,
+role) makes the editor reject the block ("unexpected or invalid content"), so such an element goes in
+an island, or the attribute moves to an inner element that is in one. One exception: a group's
+`aria-label` is the `ariaLabel` attribute (*verified* on 7.1). A section the design names with
+`aria-labelledby="x-title"` gets `ariaLabel` with that heading's text. The accessible name is the
+same; list it in the report as a deliberate delta.
 
 ## Recipes (copy exactly; themecheck.py checks tag, classes and id)
 
-Group, any tag (*verified* with section, div, ol, li). `layout` is always `default`: `constrained`
+Group, any tag (*verified* with section, div, ol, ul, li). `layout` is always `default`: `constrained`
 adds max-width rules the design does not have.
 
 ```html
-<!-- wp:group {"tagName":"section","anchor":"elements","className":"elements","layout":{"type":"default"}} -->
-<section id="elements" class="wp-block-group elements">
+<!-- wp:group {"tagName":"section","anchor":"elements","className":"elements","ariaLabel":"Five elements","layout":{"type":"default"}} -->
+<section id="elements" class="wp-block-group elements" aria-label="Five elements">
 	…inner blocks…
 </section>
 <!-- /wp:group -->
@@ -171,6 +175,19 @@ pages use `templates/single.html` in the design's type. The design's sample arti
 (title, excerpt, category, featured image imported with `wp media import … --featured_image`),
 published on dev only as placeholders and listed in the report.
 
+How (*verified*):
+- Create them with a `wp eval-file` script that defines `WP_IMPORTING` first. Publishing then
+  schedules no pings to update services.
+- Find each post by slug so a re-run updates it instead of duplicating it.
+- Pin the lead story with `stick_post()`.
+- Store the design's read time in a meta field.
+- Import its image with `wp media import <theme file> --post_id=<id> --featured_image --alt=…`.
+- Draft the install's "Hello world!" post, or it shows in the list.
+
+Post pages, archives and the 404 have no design: build them from the design's own classes (its
+page head, card meta, lead story title). Check them by eye and with `sitecheck site` through a
+second pages file that lists those URLs.
+
 ## WordPress traps
 
 Handled by the scaffold and the tools (know them, do not undo them):
@@ -187,6 +204,10 @@ Watch for:
   the front page.
 - **Relative URLs** (`src="assets/…"`, `href="about.html"`) resolve against `/about/` under
   permalinks: every URL goes through `__PREFIX___the_asset()` / `__PREFIX___the_link()` (themecheck.py).
+- **wptexturize** curls straight quotes in templates and patterns; the scaffold turns it off so the
+  export's quotes stay verbatim.
+- **A padding shorthand on the design's container**: a port rule like `.entry { padding: 72px 0 }`
+  on an element that is also `.wrap` wipes the wrap's side gutters. Use `padding-block`.
 - **Block colour/spacing attributes** (`backgroundColor`, `style`, `fontSize`): never; they add
   classes and inline styles the design does not have. Styling comes from the design's classes.
 - **`core/image` / `core/video` figures** and block-library defaults: measure, zero in port.css.
@@ -197,5 +218,6 @@ Watch for:
   content-box: never add a global box-sizing rule in port.css.
 - **The in-app browser pane** drops external CSS and same-origin fonts on *.petelocal.net and paints
   white after scrolling: verify with the tools (headless Chromium), not the pane.
-- **zsh**: quote heredoc delimiters (`<<'EOF'`) when the payload has `$` (`$190` disappears), and
-  never rely on word splitting of unquoted variables.
+- **zsh**: quote heredoc delimiters (`<<'EOF'`) when the payload has `$` (`$190` disappears), quote
+  URLs with `?` (`'/?s=x'` is a glob otherwise), and never rely on word splitting of unquoted
+  variables.

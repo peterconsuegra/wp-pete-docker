@@ -49,3 +49,7 @@ add_action(
 // The export never loads WordPress's emoji script.
 remove_action( 'wp_head', 'print_emoji_detection_script', 7 );
 remove_action( 'wp_print_styles', 'print_emoji_styles' );
+
+// Quotes and dashes exactly as the export writes them: wptexturize would curl the export's straight
+// apostrophes ("we're") in templates and patterns.
+add_filter( 'run_wptexturize', '__return_false' );
