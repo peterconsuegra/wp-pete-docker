@@ -115,8 +115,10 @@ Start from the probe's draft, then check it against Lighthouse:
 - Media ranges: align the probe's `(max-width: Npx)` with the design's real breakpoint (inventory
   breakpoints in `REPO/.reblock/inventory.json`).
 - Text LCPs need no image preload; their font must be in `fonts`.
-- `fonts`: the latin-subset files of the first screen, at most 3 in total. Every preload competes
-  with the LCP.
+- `fonts`: the latin-subset files of the first screen, at most 3 per page. Every preload competes
+  with the LCP. A font goes in the top-level `fonts` only if every page's first screen uses it;
+  otherwise it goes in those pages' `fonts`. A site-wide Cormorant preload made The Play Method's
+  Book (Jost only) 20 KB heavier and its LCP 0.1 s slower.
 - `post`: `{ "class": "<the single template's image wrapper>" }`, or `{ "featured": true }`.
 - `delay`: extra script handle prefixes, only when the gate said so.
 
@@ -142,15 +144,23 @@ node lh.mjs "$WORK/pages.json" "$WORK/lh-after" --compare="$WORK/lh-before"
 
 - Pixels:
   - 0 differ is the target. A difference must be explained or fixed (look at the cmp image).
-  - Videos: the shot step seeks every loaded video to its first frame. A poster-vs-frame
-    difference means a video did not load; speedcheck says which.
+  - Videos: the shot step waits until every autoplaying video has data (a late loader included),
+    then seeks it to its first frame. A poster-vs-frame difference means a video did not load;
+    speedcheck says which. Before 2026-10-07 the wait missed late-attached files, and the first
+    shots after setup caught the poster (The Play Method, home at 1440).
+  - A deliberate image change (a srcset candidate) differs by a few levels inside that image only.
+    Check the box of the differing pixels against the image's rect, and say so in the report.
 - Scores:
   - The phone median must not drop on any page, and the render-blocking count should be 0.
   - Server response from the cache should be ~10 ms.
   - Dev has no network latency and no third-party tags, so production gains more.
 - What Lighthouse still flags goes back into the theme, not the plugin. Example: image delivery
   for a big LCP photo means a `srcset` in the pattern (`wp_get_attachment_image_srcset()` for
-  media-library images, smaller theme asset variants for the export's). Then re-run step 5.
+  media-library images, smaller theme asset variants for the export's). Its `sizes` come from the
+  design's column widths and gutters. The plugin (1.0.1+) preloads a "class" LCP image with that
+  same srcset (`imagesrcset`), so speed.json does not change. Then re-run step 5.
+  - The Play Method's Journal lead photo: 1400 px / 110 KB became 768 px / 46 KB on phones and
+    desktop.
 - With delayed tags, check that they start after a scroll. Use a normal Chrome UA: Meta's pixel
   sends nothing under HeadlessChrome. Also check scripts that wait for `load` or
   `DOMContentLoaded`: those events are over when a held-back script starts.

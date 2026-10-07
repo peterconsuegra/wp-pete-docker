@@ -119,9 +119,13 @@ export async function settle(page) {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.querySelectorAll('img[loading="lazy"]').forEach(i => { i.loading = 'eager'; });
     await Promise.all([...document.images].filter(i => !i.complete).map(i => new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 5000); })));
-    // Videos with a file (late-loaded ones included) show their first frame, not a blank box.
-    await Promise.all([...document.querySelectorAll('video')].filter(v => v.getAttribute('src') || v.querySelector('source[src]'))
-      .map(v => (v.readyState >= 2 ? null : new Promise(r => { v.addEventListener('loadeddata', r, { once: true }); setTimeout(r, 5000); }))));
+    // Videos show a frame, not a blank box or the poster: wait (up to 6 s) until every autoplaying
+    // video and every video with a file has data. Polled, because a late loader (Reblock Page
+    // Speed's videos after the page) may attach the file only after this point is reached.
+    const due = v => v.autoplay || v.getAttribute('src') || v.querySelector('source[src]');
+    for (let t = 0; t < 6000 && [...document.querySelectorAll('video')].some(v => due(v) && v.readyState < 2); t += 100) {
+      await new Promise(r => setTimeout(r, 100));
+    }
     // Every loaded video on its first frame. Always seek, even at 0: a video that has not played yet
     // still shows its poster, and only a seek (or playback) replaces it with the frame.
     await Promise.all([...document.querySelectorAll('video')].map(v => new Promise(r => {

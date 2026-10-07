@@ -7,7 +7,9 @@
 // Pages whose LCP changes with the width get one entry per width range, with a media query at the
 // last probed width of the narrower range: check it against the design's breakpoints.
 // Fonts: the @font-face file (latin subset first) of every visible text style in the first screen
-// at the narrowest and widest width. A font most pages need goes to "fonts", others to the page.
+// at the narrowest and widest width. A font every probed page needs goes to "fonts", the others to
+// their pages: a site-wide preload of a font one page does not use makes that page slower (The
+// Play Method's Book, 2026-10-07: +20 KB, LCP +0.1 s).
 import fs from 'node:fs';
 import { chromium, readWork, parseArgs, siteUrl, newPage, open } from '../reblock_site/lib.mjs';
 
@@ -104,7 +106,7 @@ await browser.close();
 const draft = { fonts: [], pages: {} };
 const count = {};
 for (const r of Object.values(result)) for (const f of r.fonts) count[f] = (count[f] || 0) + 1;
-const shared = Object.keys(count).filter(f => count[f] >= Math.max(1, Math.ceil(want.length / 2)));
+const shared = Object.keys(count).filter(f => count[f] === want.length);
 draft.fonts = shared;
 for (const [key, r] of Object.entries(result)) {
   const entry = {};

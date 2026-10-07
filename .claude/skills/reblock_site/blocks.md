@@ -218,6 +218,8 @@ Watch for:
   content-box: never add a global box-sizing rule in port.css.
 - **The in-app browser pane** drops external CSS and same-origin fonts on *.petelocal.net and paints
   white after scrolling: verify with the tools (headless Chromium), not the pane.
-- **zsh**: quote heredoc delimiters (`<<'EOF'`) when the payload has `$` (`$190` disappears), quote
-  URLs with `?` (`'/?s=x'` is a glob otherwise), and never rely on word splitting of unquoted
-  variables.
+- **zsh**: quote heredoc delimiters (`<<'EOF'`) when the payload has `$` (`$190` disappears) or
+  backticks. An unquoted heredoc runs every backticked word as a command: a run record's
+  `wp plugin deactivate …` line nearly ran (2026-10-07). Pass paths to scripts as arguments
+  instead. Also quote URLs with `?` (`'/?s=x'` is a glob otherwise), never start an echo with `=`
+  (`echo ====` is an error), and never rely on word splitting of unquoted variables.
