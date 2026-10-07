@@ -1,0 +1,6 @@
+.DS_Store
+._*
+*.zip
+.reblock/export/
+.reblock/shots/
+.reblock/inline/

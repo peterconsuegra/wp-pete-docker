@@ -1,0 +1,42 @@
+/*
+ * port.css: what the port adds on top of the design's own CSS (site.css, verbatim from the export).
+ *   1. WordPress traps: what WordPress puts around the design's markup, undone.
+ *   2. Port rules: the design's selectors re-aimed at block markup, design defects fixed.
+ *   3. Generic templates (page, post, blog index, 404) in the design's type and colours.
+ * Every rule says why it is here.
+ */
+
+/* 1. WordPress traps ------------------------------------------------------------------------ */
+
+/* Template parts wrap the design's header and footer in a <div>: it gets no box of its own, so
+   absolute, fixed and sticky headers behave as in the export. */
+.wp-site-blocks > .wp-block-template-part {
+	display: contents;
+}
+
+/* Block themes put margin-block-start between header, main and footer. */
+.wp-site-blocks > * + * {
+	margin-block-start: 0;
+}
+
+/* 2. Port rules ------------------------------------------------------------------------------ */
+
+/* 3. Generic templates ----------------------------------------------------------------------- */
+
+/* Point these at the design's container and type (e.g. give .site-wrap the design's .wrap rules). */
+.site-main--page,
+.site-main--single,
+.site-main--index,
+.site-main--404 {
+	padding-block: 120px 96px;
+}
+
+.site-wrap {
+	max-width: 1240px;
+	margin-inline: auto;
+	padding-inline: 20px;
+}
+
+.entry-content > * + * {
+	margin-block-start: 1em;
+}
