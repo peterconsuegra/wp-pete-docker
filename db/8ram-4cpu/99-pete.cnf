@@ -2,10 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────
 # Pete Panel – MariaDB tuning for an 8 GB / 4 vCPU host
 # Core sizing for ~3GiB cgroup cap (container mem_limit ≈ 3072M)
-#   • InnoDB buffer pool ≈ 1.75G (~60% of cap)
-#   • Leaves ~1.3G for InnoDB overhead, Aria, per-connection buffers, etc.
+#   • InnoDB buffer pool ≈ 1.5G (~50% of cap)
+#   • Leaves ~1.5G for InnoDB overhead, Aria, per-connection buffers, etc.
+#     (at ~70% a 32 GB server's MariaDB reached its cap after ~2 months up
+#     and was OOM-killed)
 # ─────────────────────────────────────────────────────────────────────────
-innodb_buffer_pool_size      = 1792M
+innodb_buffer_pool_size      = 1536M
 innodb_buffer_pool_instances = 2           # ~896M per instance
 innodb_log_file_size         = 256M        # ×2 files by default → 512M total redo
 innodb_log_buffer_size       = 64M
@@ -72,6 +74,12 @@ innodb_print_all_deadlocks   = ON
 # ── Aria (used internally by MariaDB) ─────────────────────────────────────────
 aria_pagecache_buffer_size   = 64M
 aria_sort_buffer_size        = 32M
+
+# ── Slow query log: over 2 s, with plan details, in the data volume ───────────
+slow_query_log               = 1
+slow_query_log_file          = /var/lib/mysql/slow.log
+long_query_time              = 2
+log_slow_verbosity           = query_plan
 
 # ── SSL disabled per your setup ───────────────────────────────────────────────
 ssl                          = 0
