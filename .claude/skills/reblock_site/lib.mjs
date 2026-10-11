@@ -93,7 +93,13 @@ export async function newPage(browser, w, log) {
   const page = await ctx.newPage();
   await page.route('**/*', r => (TRACKERS.test(r.request().url()) ? r.abort() : r.continue()));
   if (log) {
-    page.on('console', m => { if (m.type() === 'error') log.push('console: ' + m.text().slice(0, 200)); });
+    page.on('console', m => {
+      if (m.type() !== 'error') return;
+      // claude.ai/design templates, before the runtime fills them in: the browser asks for
+      // src="{{ it.img }}" and reads width="{{ t.w }}" on SVG shapes. Not the design's errors.
+      if (/%7B%7B|\{\{/.test((m.location() || {}).url || '') || /"\{\{[^"]*\}\}"/.test(m.text())) return;
+      log.push('console: ' + m.text().slice(0, 200));
+    });
     page.on('pageerror', e => log.push('pageerror: ' + String(e).slice(0, 200)));
     page.on('requestfailed', r => {
       const err = (r.failure() || {}).errorText || '';

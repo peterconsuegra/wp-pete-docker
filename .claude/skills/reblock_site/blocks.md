@@ -5,7 +5,9 @@
 Read this before writing the first pattern. Everything marked *verified* was measured equal to the
 design with the scaffold's theme.json: The Play Method, 2026-10-07, on WordPress 7.0 (half the home
 page) and then the whole site on 7.1.3. Every page and state came out with 0 pixels different at
-390 and 1440.
+390 and 1440. A claude.ai/design export (inline styles, no classes) follows the same recipes plus
+"Inline-styled exports" below, *verified* on Ozone Polaris, 2026-10-11 (WordPress 7.1.3): six pages
+and three states, 0 pixels different at 390 and 1440.
 
 ## The principle
 
@@ -74,6 +76,25 @@ or the link's own box in a way that differs, re-aim it in port.css
 </div>
 <!-- /wp:buttons -->
 ```
+
+When the design's button is a box of its own (a `<button>` with padding, border, sometimes
+`width:100%`, as in claude.ai/design's Button component), make the link the box (*verified*,
+Ozone Polaris): the wrapper steps aside and the classes style the link through it, so one rule set
+serves a block's link and an island's `<a class="btn …">`.
+
+```css
+.wp-block-buttons > .wp-block-button.btn { display: contents; }
+:is(a.btn, .btn > .wp-block-button__link) {
+	box-sizing: border-box;   /* a <button>'s default, which a link lacks */
+	width: auto;              /* core: .wp-block-buttons .wp-block-button__link { width: 100% } */
+	height: auto;             /* core: .wp-block-button__link { height: 100% } */
+	/* … the design's padding, border, colours; :hover, :active and :focus-visible as it draws them */
+}
+```
+
+The `buttons` row gets core's flex layout: `flex-wrap: wrap` and `align-items: center` unless its
+class says otherwise (the design's `<div>` row did not wrap: give it `flex-wrap:nowrap;align-items:normal;gap:0`
+before its own declarations; build.py does that for inline-styled exports).
 
 Island (*verified* with video, img, h1-with-logo, form, span, header, footer):
 
@@ -188,6 +209,46 @@ Post pages, archives and the 404 have no design: build them from the design's ow
 page head, card meta, lead story title). Check them by eye and with `sitecheck site` through a
 second pages file that lists those URLs.
 
+## Inline-styled exports (claude.ai/design)
+
+The screens style every element inline and have almost no classes, and a static block may not keep a
+style attribute. So the port keeps the export's styles verbatim in sources and generates the classes
+(*verified*, Ozone Polaris):
+
+- **Sources**: one per pattern in `REPO/.reblock/src/patterns/<name>.php`: the block markup of this
+  file's recipes, with the export's `style="…"` (and `style-hover="…"`) copied onto each element.
+  `python3 build.py "$REPO" --prefix=<2-4 letters>` (the prefix is kept in `.reblock/src/build.json`)
+  writes `patterns/<name>.php` without the style attributes and `assets/css/pages.css`: one class rule
+  per style, on the element's first `<prefix>-` class, or on `<prefix>-<hash>` for an unnamed element
+  (the same style shares one rule). Name what an editor sees (sections, groups, headings, paragraphs:
+  their `className` must match); islands can stay unnamed. A variant's own class goes first
+  (`class="ozp-header--dark ozp-header"`): one name has one style, and the build stops otherwise.
+- **PHP in a style** stops the build: unroll a loop whose items differ in style (six positioned cards
+  are six elements), or move the per-item value to `tail.css` (`.card--3 { left: 27% }`).
+- **Page `<style>` blocks** (body, links, keyframes) go in `.reblock/src/css/head.css`, per page through
+  body classes; **states and breakpoints** the script decided go in `tail.css`. The build puts the
+  generated rules between the two, so `tail.css` wins over them.
+- **`<x-import>` components** are the design system's React components (`_ds/…/_ds_bundle.js`): read
+  each one's code and write its rendered styles and its hover, active and focus states as classes in
+  `head.css` (Button as both link shapes above, Logo, Switch with `[aria-checked=true]`, Input and
+  Select with `:focus`). An `<x-import … style="…">` renders a real wrapper `<div style="…">` around
+  the component (the others render `display: contents` wrappers, which can go).
+- **`sc-if` on a width the script measures** (`wide = innerWidth >= 960`): both versions in the markup,
+  `<prefix>-wide-only` / `<prefix>-narrow-only` switched at that width in `tail.css`. Copy drawn twice
+  is edited twice: say so in the pattern's header.
+- **`{{ }}` state values** (an open answer, a hover drawing, a switch) become a class or attribute the
+  script toggles (`is-open`, `aria-checked`) or `:hover`, with the export's two values in `tail.css`.
+- **`data-skin` (or any `data-`) on a block wrapper**: a class with the same declarations as the
+  design system's `[data-skin="moody"]` rule (islands keep the attribute itself).
+- **The `DCLogic` script** becomes `assets/js/port.js`: the same maths, its reduced-motion branch kept.
+  Buttons that only scrolled become links (`href="#audit"`); clock-driven motion is compared with
+  `"reducedMotion": true` and checked apart.
+- **Images**: the importer copies the export's WebP files as they are (a re-encoded or scaled copy of
+  a screenshot shows thousands of pixels of difference); a thin-line PNG overlay may need
+  `--lossless=<its path>`.
+- **Measuring without classes**: `measure.mjs` matches landmarks by position (keep the design's order of
+  sections, also outside `<main>`); `boxes.mjs` walks one section element by element.
+
 ## WordPress traps
 
 Handled by the scaffold and the tools (know them, do not undo them):
@@ -218,6 +279,17 @@ Watch for:
   content-box: never add a global box-sizing rule in port.css.
 - **The in-app browser pane** drops external CSS and same-origin fonts on *.petelocal.net and paints
   white after scrolling: verify with the tools (headless Chromium), not the pane.
+- **Core CSS on block wrappers**: `.wp-block-group { box-sizing: border-box }` (the export's boxes are
+  content-box), the button rules above, `:where(figure) { margin: 0 0 1em }`. Core prints its CSS
+  before the theme's, so a theme rule of equal weight wins; heavier core rules need a heavier one.
+- **Body classes**: a body class must never be a name a pattern uses (*seen*: body `ozp-case` and the
+  case study section `.ozp-case` boxed the whole page in 1240 px). Give body classes their own stems
+  (`<prefix>-page-<key>`, `<prefix>-is-<state>`).
+- **`hidden`** loses to any class that sets `display`: keep `[hidden] { display: none !important }` when
+  a script shows and hides elements.
+- **The design's `a:hover`** (and a design system's own `a`/`a:hover` rules, often 0,1,1) beats a link's
+  class colour (0,1,0), where the export's inline colour beat every hover. Write such a link's rule for
+  `:hover` too (`.x,.x:hover{…}`), and the design's page-level link rules with `:where()`.
 - **zsh**: quote heredoc delimiters (`<<'EOF'`) when the payload has `$` (`$190` disappears) or
   backticks. An unquoted heredoc runs every backticked word as a command: a run record's
   `wp plugin deactivate …` line nearly ran (2026-10-07). Pass paths to scripts as arguments

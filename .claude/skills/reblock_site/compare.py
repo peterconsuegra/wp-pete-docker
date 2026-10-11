@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Design and port side by side, from the PNGs shots.mjs and measure.mjs --shots write.
 
-Usage: compare.py <shots_dir> [name_prefix ...] [--diff] [--max-width=2000] [--pair=design,site]
+Usage: compare.py <shots_dir> [name_prefix ...] [--diff] [--bands] [--max-width=2000] [--pair=design,site]
 Pairs every <name>-design.png with <name>-site.png (tiles -design-t1.png … are stitched first; --pair
 names other tags, e.g. --pair=before,after for a site before and after a change) and
 writes <name>-cmp.png: design left, site right, a label with both heights. --diff adds a third column,
 the pixel difference brightened (only meaningful down to the first height change). Prints the
 heights and how many pixels differ (by more than 24 levels, over the shared area: re-encoded
-photos stay under that). Needs Pillow.
+photos stay under that). --bands also prints where they are: bands of rows with differing pixels
+(y range, x range, count), rows less than 8 px apart joined. Needs Pillow.
 """
 import glob
 import os
@@ -43,6 +44,30 @@ def load(path_png):
     return out
 
 
+def bands(mask, gap=8):
+    """Bands of rows holding differing pixels: [y0, y1, x0, x1, count]."""
+    out, cur = [], None
+    box = mask.getbbox()
+    if not box:
+        return out
+    for y in range(box[1], box[3]):
+        row = mask.crop((0, y, mask.width, y + 1))
+        b = row.getbbox()
+        if not b:
+            continue
+        n = row.histogram()[255]
+        if cur and y - cur[1] <= gap:
+            cur[1], cur[2], cur[3], cur[4] = y, min(cur[2], b[0]), max(cur[3], b[2] - 1), cur[4] + n
+        else:
+            if cur:
+                out.append(cur)
+            cur = [y, y, b[0], b[2] - 1, n]
+    if cur:
+        out.append(cur)
+    return out
+
+
+where = {}
 names = set()
 for f in os.listdir(shots):
     m = re.match(r'(.+)-' + re.escape(left) + r'(?:-t\d+)?\.png$', f)
@@ -59,6 +84,8 @@ for name in sorted(names):
     w0, h0 = min(d.width, s.width), min(d.height, s.height)
     mask = ImageChops.difference(d.crop((0, 0, w0, h0)), s.crop((0, 0, w0, h0))).convert('L').point(lambda v: 255 if v > 24 else 0)
     differ = mask.histogram()[255]
+    if 'bands' in opts and differ:
+        where[name] = bands(mask)
     cols = [d, s]
     if 'diff' in opts:
         w, h = min(d.width, s.width), min(d.height, s.height)
@@ -86,3 +113,7 @@ for name, dh, sh, differ in rows:
     else:
         print('%-40s %8d %8d %+6d %12d' % (name, dh, sh, sh - dh, differ))
 print('wrote %d *-cmp.png in %s' % (sum(1 for r in rows if r[2] is not None), shots))
+for name in sorted(where):
+    print('%s: where the pixels differ' % name)
+    for y0, y1, x0, x1, n in where[name]:
+        print('   y %d-%d (h %d)  x %d-%d  px %d' % (y0, y1, y1 - y0 + 1, x0, x1, n))

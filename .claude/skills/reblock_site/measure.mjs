@@ -4,7 +4,8 @@
 // main > *, body > footer). Each is found on the site by its rarest class (same index in the page),
 // else its id: the port keeps the design's class names, so wrappers WordPress adds do not matter.
 // A landmark with neither (claude.ai/design screens are inline-styled) is matched by position among
-// the site's "siteLandmarks" (default: the template parts' header and footer, and main's children).
+// the site's "siteLandmarks" (default: the template parts' header and footer, main's children and
+// sections outside main), so both lists must keep the same order.
 // --deep=<class>   every element with a class inside that landmark, by class and occurrence: the
 //                  first rows that move or resize are where the difference starts.
 // --shots=<dir>    element screenshots of every landmark off by more than tol, as
@@ -73,7 +74,9 @@ const pad = (s, n) => String(s).padEnd(n);
 const browser = await chromium.launch();
 const { server, base } = await serveDir(cfg.export);
 const sel = cfg.landmarks && cfg.landmarks !== 'CHANGE-ME' ? cfg.landmarks : 'body > header, main > *, body > footer';
-const siteSel = cfg.siteLandmarks || '.wp-site-blocks > .wp-block-template-part > header, .wp-site-blocks > header, main > *, .wp-site-blocks > .wp-block-template-part > footer, .wp-site-blocks > footer';
+// A pattern placed in the template outside <main> (the export had a section after its <main>) is
+// a section of .wp-site-blocks: it counts too.
+const siteSel = cfg.siteLandmarks || '.wp-site-blocks > .wp-block-template-part > header, .wp-site-blocks > header, main > *, .wp-site-blocks > section, .wp-site-blocks > .wp-block-template-part > footer, .wp-site-blocks > footer';
 let problems = 0;
 for (const p of want) {
   for (const w of widthsOf(opts, cfg)) {

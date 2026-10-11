@@ -159,6 +159,7 @@ const collect = () => {
     links, forms, videos, iframes, images, media, props: [...props], faces, reset, sheets, scripts, fontsLoaded,
     bodyFont: body.fontFamily + ' ' + body.fontWeight + ' ' + body.fontSize + '/' + body.lineHeight, bodyBg: body.backgroundColor, bodyColor: body.color,
     emoji: (text.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) || []).length, emDash: (text.match(/—/g) || []).length,
+    labels: [...document.querySelectorAll('[data-screen-label]')].map(e => e.getAttribute('data-screen-label').trim()),
   };
 };
 
@@ -181,6 +182,26 @@ server.close();
 
 // ---------- order, titles, paths ----------
 const fileToKey = Object.fromEntries(pages.filter(p => !p.of).map(p => [p.design, p.key]));
+// A claude.ai/design project keeps its explorations next to its pages: option canvases (sections
+// labelled "1a Showcase", "Turn 2") and earlier versions of a screen ("Homepage v2" beside "v3"). They
+// stay out of the work list (the gate confirms the scope), and the latest home screen is the home.
+const exploration = new Map();
+if (format === 'dc') {
+  for (const p of report.pages.filter(q => !q.of)) {
+    if ((p.labels || []).filter(l => /^(\d+[a-z]\b|turn \d+\b)/i.test(l)).length >= 2) exploration.set(p.key, 'option canvas');
+  }
+  const ver = k => { const m = /-v(\d+)$/.exec(k); return m ? Number(m[1]) : 1; };
+  const groups = {};
+  for (const p of report.pages.filter(q => !q.of && !exploration.has(q.key))) (groups[p.key.replace(/-v\d+$/, '')] ||= []).push(p);
+  for (const g of Object.values(groups)) {
+    g.sort((a, b) => ver(b.key) - ver(a.key));
+    for (const p of g.slice(1)) exploration.set(p.key, 'earlier version of ' + g[0].key);
+  }
+  if (!report.pages.some(p => p.path === '/')) {
+    const h = report.pages.find(p => !p.of && !exploration.has(p.key) && /home|inicio|index/.test(p.key));
+    if (h) h.path = '/';
+  }
+}
 const home = report.pages.find(p => p.path === '/') || report.pages[0];
 const navOrder = [];
 for (const l of home.links.filter(l => l.inHeader)) {
@@ -198,8 +219,8 @@ const rank = p => (p.path === '/' ? -1 : navOrder.includes(p.key) ? navOrder.ind
 // claude.ai/design helper screens (a phone frame around another screen) are not pages of the site.
 const helper = p => p.iframes.some(f => /\.dc\.html/.test(f));
 const helpers = report.pages.filter(p => !p.of && helper(p)).map(p => p.key);
-const COMMERCE = /cart|carrito|checkout|order|confirm|product|producto|shop|tienda/;
-const ordered = report.pages.filter(p => !p.of && !helper(p)).sort((a, b) => rank(a) - rank(b) || a.key.localeCompare(b.key));
+const COMMERCE = /(^|-)(cart|carrito|checkout|orders?|confirm|products?|productos?|shop|tienda)(-|$)/;
+const ordered = report.pages.filter(p => !p.of && !helper(p) && !exploration.has(p.key)).sort((a, b) => rank(a) - rank(b) || a.key.localeCompare(b.key));
 const work = [];
 for (const p of ordered) {
   const t = p.path === '/' ? 'Home' : (segs(p.title).find(x => x !== brand) || p.h1 || p.key).trim();
@@ -223,7 +244,7 @@ function diff(a, b) {
 function variants(field) {
   const ref = lines(home[field]);
   const out = [];
-  for (const p of report.pages.filter(q => !q.of && q !== home)) {
+  for (const p of report.pages.filter(q => !q.of && q !== home && !exploration.has(q.key))) {
     const d = diff(ref, lines(p[field]));
     if (d.length) out.push({ key: p.key, diff: d });
   }
@@ -254,6 +275,18 @@ for (const { f } of (assets.js || []).filter(a => !RUNTIME.test(a.f))) {
   for (const m of t.matchAll(/classList\.(?:add|remove|toggle|contains)\(\s*["'`]([^"'`]+)/g)) hooks.add('.' + m[1] + ' (state class)');
 }
 const readme = files.find(f => /^readme(\.md|\.txt)?$/i.test(path.basename(f)) && !f.includes('_ds/'));
+// A script that animates on a clock (requestAnimationFrame, element.animate: floating cards, a marquee)
+// paints a different frame at every screenshot: such runs compare with reducedMotion (lib.mjs).
+const motion = [];
+for (const p of report.pages.filter(q => !q.of && !exploration.has(q.key))) {
+  const srcs = format === 'dc' ? [p.design.split('?')[0]] : (assets.js || []).filter(a => !RUNTIME.test(a.f)).map(a => a.f);
+  for (const f of srcs) {
+    const txt = fs.readFileSync(path.join(root, f), 'utf8');
+    if (/requestAnimationFrame\s*\(|\.animate\s*\(/.test(txt) && !motion.includes(f)) motion.push(f);
+  }
+}
+// claude.ai/design renders: the screen's root is .sc-host (inside #dc-root), with or without <main>.
+const DC_LANDMARKS = '.sc-host > header, .sc-host > main > *, .sc-host > section, .sc-host > footer, .sc-host > div > header, .sc-host > div > section, .sc-host > div > footer';
 
 // ---------- write ----------
 const allMedia = {};
@@ -269,7 +302,8 @@ if (keepPages) {
 } else {
   const cfg = {
     name: brand, format, export: root, site: opts.site || 'http://CHANGE-ME.petelocal.net', widths: [390, 1440],
-    landmarks: home.lmSel,
+    ...(motion.length ? { reducedMotion: true } : {}),
+    landmarks: format === 'dc' ? DC_LANDMARKS : home.lmSel,
     menu: home.menu, pages: work,
   };
   fs.writeFileSync(pagesFile, JSON.stringify(cfg, null, 2) + '\n');
@@ -284,9 +318,10 @@ for (const w of work) {
   out.push(`  ${w.of ? '  state ' : ''}${w.key.padEnd(14)} ${(w.design).padEnd(26)} ${w.of ? (w.label || '') : (w.path || '').padEnd(12) + ` h1440 ${p.height} · h390 ${p.height390}${p.overflow || p.overflow390 ? ' · OVERFLOWS' : ''} · "${p.title}"`}`);
 }
 if (helpers.length) out.push(`  left out (design-tool screens framing other screens): ${helpers.join(', ')}`);
+for (const [k, why] of exploration) out.push(`  left out (${why}): ${k}  (ask at the gate which screens are pages)`);
 const commerce = ordered.filter(p => COMMERCE.test(p.key)).map(p => p.key);
 if (commerce.length) out.push(`  commerce screens (out of scope by default, agree the approach with Pedro): ${commerce.join(', ')}`);
-out.push('', `LANDMARKS (pages.json "landmarks": ${home.lmSel})`);
+out.push('', `LANDMARKS (pages.json "landmarks": ${format === 'dc' ? DC_LANDMARKS : home.lmSel})`);
 for (const p of ordered) out.push(`  ${p.key}: ` + p.landmarks.map(l => l.el.replace(/^(\w+)\.([^.]+).*$/, '$1.$2') + ' ' + l.height).join(' · '));
 out.push('', 'HEADER VARIANTS (diff vs home; the header pattern must reproduce each)');
 if (!headerVariants.length) out.push('  same on every page');
@@ -319,6 +354,7 @@ out.push('  @font-face in local CSS: ' + (home.faces.length ? '' : 'none'), ...h
 out.push('  fonts loaded: ' + [...new Set(report.pages.flatMap(p => p.fontsLoaded))].join(' · '));
 out.push('', 'SCRIPTS: ' + [...new Set(report.pages.flatMap(p => p.scripts))].map(s => s.replace(base + '/', '')).join(', '));
 out.push('  hooks the scripts use (keep these classes, ids, data- and aria- attributes in the port): ' + [...hooks].join('  '));
+out.push('', 'MOTION: ' + (motion.length ? `the script animates on a clock in ${motion.join(', ')}: pages.json gets "reducedMotion": true (compare still frames; check the motion apart)` : 'no clock-driven animation'));
 out.push('', 'EXTERNAL HOSTS requested: ' + ([...new Set(report.pages.flatMap(p => p.external))].join(', ') || 'none'));
 const errs = report.pages.flatMap(p => p.log.map(l => `${p.key}: ${l}`));
 out.push('DESIGN ERRORS: ' + (errs.length ? '' : 'none'), ...errs.map(e => '  ' + e));

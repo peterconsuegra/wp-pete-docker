@@ -2,7 +2,7 @@
 """Bring a site export's assets into the block theme, so patterns can keep the export's own paths.
 
 Usage: import_assets.py <pages.json> <theme_dir> [--max-width=2400] [--quality=82]
-                        [--subsets=latin,latin-ext] [--master=<dir>]
+                        [--subsets=latin,latin-ext] [--master=<dir>] [--lossless=<glob,...>]
 - Images -> assets/img/ as WebP (SVG, GIF, ICO copied; a WebP larger than its source keeps the source;
   a WebP source is copied as it is), wider than --max-width scaled down. Videos -> assets/video/
   (made fast-start with ffmpeg when the moov atom is at the end). Font files -> assets/fonts/.
@@ -13,10 +13,13 @@ Usage: import_assets.py <pages.json> <theme_dir> [--max-width=2400] [--quality=8
   files -> assets/css/site.css. Local scripts (not the claude.ai/design runtime) -> assets/js/site.js.
 - Inline <style>/<script> blocks of each page -> <work_dir>/inline/<key>.css|js for the porter.
 --master: a library to take files from when it has the same path (claude.ai/design strips SVG <style>).
+--lossless: export paths (fnmatch globs, comma separated) made lossless WebP: thin lines and UI overlays
+that a lossy copy blurs (compare.py shows them). The manifest remembers it for later re-runs.
 Re-running replaces site.css, fonts.css and site.js, adds new files and re-imports changed ones
 (the manifest keeps each source file's sha1); unchanged files are kept.
 Needs Pillow; ffmpeg for fast-start fixes.
 """
+import fnmatch
 import hashlib
 import json
 import os
@@ -41,6 +44,7 @@ MAX_W = int(opts.get('max-width', 2400))
 QUALITY = int(opts.get('quality', 82))
 SUBSETS = opts.get('subsets', 'latin,latin-ext').split(',')
 MASTER = opts.get('master')
+LOSSLESS = [g for g in opts.get('lossless', '').split(',') if g]
 UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36'
 RUNTIME = re.compile(r'(^|/)(support\.js|_ds_bundle\.js)$|unpkg\.com|react|babel', re.I)
 GENERIC = {'assets', 'asset', 'img', 'imgs', 'image', 'images', 'imagenes', 'static', 'media', 'public',
@@ -121,7 +125,9 @@ for dirpath, dirs, files in os.walk(root):
             warnings.append('%s: name taken, written as %s' % (rel, dst_rel))
         dst = os.path.join(theme, dst_rel)
         sha1 = hashlib.sha1(open(src, 'rb').read()).hexdigest()
-        if rel in manifest and manifest[rel].get('sha1') == sha1 and os.path.exists(os.path.join(theme, manifest[rel]['src'])):
+        lossless = any(fnmatch.fnmatch(rel, g) for g in LOSSLESS) or bool(manifest.get(rel, {}).get('lossless'))
+        if rel in manifest and manifest[rel].get('sha1') == sha1 and os.path.exists(os.path.join(theme, manifest[rel]['src'])) \
+                and bool(manifest[rel].get('lossless')) == lossless:
             kept += 1
             continue
         os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -131,6 +137,8 @@ for dirpath, dirs, files in os.walk(root):
             shutil.copyfile(src, dst)
             with Image.open(src) as img:
                 entry.update(w=img.width, h=img.height)
+            if lossless:
+                entry['lossless'] = True
         elif raster:
             img = ImageOps.exif_transpose(Image.open(src))
             if img.mode not in ('RGB', 'RGBA'):
@@ -138,7 +146,9 @@ for dirpath, dirs, files in os.walk(root):
             if img.width > MAX_W:
                 img = img.resize((MAX_W, round(img.height * MAX_W / img.width)), Image.LANCZOS)
             small_png = ext == '.png' and os.path.getsize(src) < 30000
-            img.save(dst, 'WEBP', quality=QUALITY, method=6, lossless=small_png)
+            img.save(dst, 'WEBP', quality=QUALITY, method=6, lossless=small_png or lossless)
+            if lossless:
+                entry['lossless'] = True
             if os.path.getsize(dst) > os.path.getsize(src) and img.size == Image.open(src).size:
                 os.remove(dst)
                 dst_rel = stem + ext

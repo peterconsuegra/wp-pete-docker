@@ -38,19 +38,27 @@ Playwright from the ozone-design-system install (`PLAYWRIGHT_DIR` overrides it) 
 
 | Tool | What it does |
 |---|---|
-| `inventory.mjs <export> <WORK> --site=URL` | Renders every page. Prints pages, landmarks, header/footer variants per page, links and placeholders, forms, media, breakpoints, fonts, the JS hooks, external hosts, asset warnings and the README. Writes `pages.json` (the work list every tool reads) and `inventory.json`. |
+| `inventory.mjs <export> <WORK> --site=URL` | Renders every page. Prints pages, landmarks, header/footer variants per page, links and placeholders, forms, media, breakpoints, fonts, the JS hooks, clock-driven motion, external hosts, asset warnings and the README. Writes `pages.json` (the work list every tool reads) and `inventory.json`. A claude.ai/design project: the latest home screen is home, option canvases and earlier versions are left out (and listed), a script that animates on a clock sets `reducedMotion`. |
 | `shots.mjs <pages.json> design\|site <out> [keys] [--html] [--tag=<name>]` | Full-page and first-screen PNGs at 390 and 1440. `--html` saves the rendered DOM: the markup to port for claude.ai/design templates. `--tag` names the files (`before`/`after` around a change). |
-| `compare.py <shots> [prefix] [--diff] [--pair=design,site]` | Side by side (`*-cmp.png`) with heights and the pixels that differ; `--pair=before,after` compares a site with itself. |
-| `measure.mjs <pages.json> [keys] [--deep=<class>] [--shots=<dir>]` | Every landmark's position and size, design vs site, matched by class; `--deep` element by element inside one section. |
+| `compare.py <shots> [prefix] [--diff] [--bands] [--pair=design,site]` | Side by side (`*-cmp.png`) with heights and the pixels that differ; `--bands` prints where (rows and columns); `--pair=before,after` compares a site with itself. |
+| `measure.mjs <pages.json> [keys] [--deep=<class>] [--shots=<dir>]` | Every landmark's position and size, design vs site, matched by class (by position when the design has none); `--deep` element by element inside one section. |
+| `boxes.mjs <pages.json> <key> <width> <design sel> [site sel]` | Element by element in document order inside one section, design vs site: for designs without classes (claude.ai/design), where `--deep` has nothing to match. |
 | `sitecheck.mjs <pages.json> design\|site [keys]` | Console errors, failed requests, PHP warnings, broken images, external hosts, overflow from 360 to 1600, the menu, every internal link (incl. links that silently render the front page). |
 | `scaffold.py <REPO> --slug= --name= [--source= --site=]` | Starts the theme from `scaffold/`. |
-| `import_assets.py <pages.json> <REPO> [--master=<dir>]` | Images to WebP, videos (made fast-start), fonts (Google Fonts self-hosted), the design's CSS → `site.css` and JS → `site.js`, `assets/manifest.json`. |
+| `import_assets.py <pages.json> <REPO> [--master=<dir>] [--lossless=<glob,…>]` | Images to WebP (the export's own WebP files copied as they are; `--lossless` for thin-line overlays), videos (made fast-start), fonts (Google Fonts self-hosted), the design's CSS → `site.css` and JS → `site.js`, `assets/manifest.json`. |
+| `build.py <REPO> [--prefix=<letters>]` | Inline-styled exports (claude.ai/design): the sources in `REPO/.reblock/src` (the export's `style="…"` verbatim) → `patterns/` and `assets/css/pages.css`, one class per style. See blocks.md, "Inline-styled exports". |
+| `prune.py <REPO> [--dry-run]` | Removes the imported files no pattern, template or stylesheet uses (a claude.ai/design project carries its explorations' images). |
 | `themecheck.py <REPO>` | Block markup the editor would reject, missing patterns/parts/assets, relative URLs, export page links. |
 | `sync.sh <REPO> <DEV_URL>` | themecheck, then a whole-folder copy into the site; clears the pattern cache and WP Fastest Cache files. |
 
 `pages.json` fields:
 - `export`, `site`, `widths`;
+- `reducedMotion`: `true` browses both sides with `prefers-reduced-motion: reduce`, for a design whose
+  script animates on a clock (floating cards, a marquee): a still frame each, compared pixel for
+  pixel. The inventory sets it when it finds such a script; check the motion apart (step 5).
 - `landmarks`: a CSS selector for the design's sections;
+- `siteLandmarks` (optional): the site's, when the default (the template parts' header and footer,
+  `main`'s children, sections outside `main`) does not keep the design's order;
 - `menu`: `{ toggle, panel }`;
 - `pages`: `[{ key, title, design, path }]`. A state of a page is `{ key, of, click: [selectors] }`
   (or `design` with a `?query` for claude.ai/design states). `siteClick` is used when the site needs
@@ -85,6 +93,10 @@ Read the whole report. The inventory is a map, not a reading: also read every pa
 in full, plus its CSS and JS.
 - For a claude.ai/design export, read the flow file and every component as /create_subtheme does
   (`sc-if`, `sc-for`, `{{ }}`, the `DCLogic` data).
+- A claude.ai/design project usually holds more than the site: option canvases ("1a …", "Turn 2"),
+  earlier versions of a screen, component screens. The inventory leaves them out of the work list and
+  says which; the gate confirms the scope. Their pages often link to an earlier version of home:
+  every such link goes to the front page.
 - Check the brand: the export and the dev site must be the same website. If they differ, stop and
   ask.
 
@@ -113,7 +125,10 @@ variant.
 
 ## 3. Decisions gate (one AskUserQuestion, only the questions that apply; wait for the answers)
 
-- **Theme slug**: `<brand>-blocks` (recommended) or another.
+- **Scope** (the export holds explorations or several versions of a screen): which screens become
+  pages. Recommended: the latest version of each screen and the pages they link to.
+- **Theme slug**: `<brand>-blocks` (recommended) or another. Never the slug of a theme live on the
+  brand's production site (a deploy would overwrite it).
 - **Forms** (the export has some): front-end only, as designed (recommended until a mail provider
   is chosen) / the theme's backend `inc/forms.php` (entries in wp-admin, an email to the admin) / a
   form plugin already on the site.
@@ -140,10 +155,13 @@ Not asked, always:
    - Add `--master=<library>` for claude.ai/design exports whose SVG logos lost their `<style>`.
    - Act on every WARNING.
    - Inline `<style>`/`<script>` blocks land in `WORK/inline/`: move what applies into `pages.css` /
-     `port.js`.
-   - For a claude.ai/design export, the screens' inline styles become classes in
-     `assets/css/pages.css`: the 1440 values, plus the design's breakpoint for the phone values. Read
-     them from the `--html` renders at both widths.
+     `port.js` (for a built export, into `.reblock/src/css/head.css`: the build writes `pages.css`).
+   - For a claude.ai/design export (inline styles), the patterns are built from sources: write each in
+     `REPO/.reblock/src/patterns/` with the export's `style="…"` verbatim, then
+     `python3 build.py "$REPO" --prefix=<2-4 letters>` before every sync (blocks.md, "Inline-styled
+     exports"). Page-level rules and the design system's components (`<x-import>`, read in
+     `_ds_bundle.js`) go in `.reblock/src/css/head.css`; states and breakpoints the script decided in
+     `tail.css`; the script itself in `port.js`.
 3. Header and footer: `patterns/header.php` and `patterns/footer.php` hold the design's markup in
    islands.
    - Every HEADER/FOOTER VARIANT from the inventory is a PHP condition on `<PREFIX>_page_key()`.
@@ -178,13 +196,21 @@ For each page:
    node measure.mjs "$WORK/pages.json" <key> <state keys>         # every landmark within 2 px, 390 and 1440
    node measure.mjs "$WORK/pages.json" <key> --deep=<class>        # inside a section that differs
    node shots.mjs "$WORK/pages.json" site "$WORK/shots" <key> <state keys>
-   python3 compare.py "$WORK/shots" <key> --diff                   # then LOOK at every <key>-*-cmp.png
+   python3 compare.py "$WORK/shots" <key> --diff --bands           # then LOOK at every <key>-*-cmp.png
    node sitecheck.mjs "$WORK/pages.json" site <key>                # must end with "all checks ok"
    ```
    - Fix in the patterns or `port.css` (each rule commented), never in `site.css`; re-sync,
      re-measure.
-   - compare.py prints the pixels that differ. 0 is the target, which The Play Method reached on
-     every page. Explain any area that differs.
+   - compare.py prints the pixels that differ and, with `--bands`, where. 0 is the target, which The
+     Play Method (static) and Ozone Polaris (claude.ai/design) reached on every page. Explain any area
+     that differs. In a section without classes, `boxes.mjs` finds the first element that moves.
+   - Pixels in images: the export's WebP files are copied as they are; a PNG or JPG made WebP can
+     differ on thin lines (re-import that file with `--lossless=<its path>`).
+   - Render noise: a sticky header with `backdrop-filter` can differ by a few antialiased pixels in
+     first-screen shots only. Shoot the design twice: if it differs from itself as much, it is noise.
+   - With `reducedMotion`, check the motion apart: a short Playwright script in `REPO/.reblock/tools/`
+     without reduced motion (transforms change over time, animations run, videos play, no console
+     errors).
    - Allowed deltas: dynamic content (posts, dates) and what the gate decided; name each one.
    - `wp-content/debug.log` gets nothing from the theme.
 4. **Record**: mark the page in `progress.md` and commit (`git -C "$REPO" add -A && git -C "$REPO" commit -m "<Page> page"`).
@@ -193,6 +219,7 @@ For each page:
 
 ## 6. Final pass and package
 
+- `python3 prune.py "$REPO"`: imported files no page uses go (exploration images, mockups).
 - Run measure, `sitecheck site`, shots and compare over every page and state. The links, the menu,
   overflow, posts and the 404 must all be clean. Then themecheck and a clean `debug.log`.
 - Pages without a design (a post, an archive, search, a plain page) get `sitecheck site` through a
@@ -208,7 +235,7 @@ For each page:
   verified.
 - Design defects fixed in the port, deliberate deltas, and open items: placeholders, forms backend,
   bookings, font licences, Yoast titles and descriptions from the export (set them only if Yoast is
-  active).
+  active). Screens left out (explorations, earlier versions), and any noise explained.
 - Where everything is: REPO and its last commit, the zip, the dev URLs to open.
 - The rollback: the previous theme and options from the preflight, and the pages created.
 
