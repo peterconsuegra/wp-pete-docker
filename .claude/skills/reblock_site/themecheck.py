@@ -217,12 +217,15 @@ for s in sorted(set(patterns) - used_patterns):
 # ---------- CSS url() targets, leftover tokens ----------
 for f in glob.glob(os.path.join(theme, 'assets', 'css', '*.css')):
     css = open(f, encoding='utf-8').read()
-    for m in re.finditer(r'url\(\s*["\']?([^"\')]+)["\']?\s*\)', css):
-        u = m.group(1).split('#')[0].split('?')[0]
-        if not u or re.match(r'^(data:|https?:|//|/)', u):
+    # Whole url() tokens, quoted ones first: a quoted data: URI can hold url(%23id) of its own (an SVG
+    # filter reference), which is not a file.
+    for m in re.finditer(r'''url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')\s][^)]*?))\s*\)''', css):
+        raw = next(g for g in m.groups() if g is not None).strip()
+        u = raw.split('#')[0].split('?')[0]
+        if not u or re.match(r'^(data:|https?:|//|/)', raw):
             continue
         if not os.path.exists(os.path.normpath(os.path.join(os.path.dirname(f), u))):
-            errors.append('%s: url(%s) does not exist' % (rel(f), m.group(1)))
+            errors.append('%s: url(%s) does not exist' % (rel(f), raw))
 for f in glob.glob(os.path.join(theme, '**', '*'), recursive=True):
     if os.path.isfile(f) and os.path.splitext(f)[1] in ('.php', '.html', '.json', '.css', '.js', '.md'):
         m = TOKENS.search(open(f, encoding='utf-8', errors='replace').read())

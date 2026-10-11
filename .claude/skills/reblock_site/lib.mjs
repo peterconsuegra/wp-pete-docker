@@ -46,8 +46,13 @@ export function serveDir(root) {
 
 // pages.json: { export, site, widths, landmarks, menu, pages: [{ key, title, design, path, of, click, siteClick }] }.
 // An entry with "of" is a state of another page (same design file and path, plus clicks).
+// pages.json "reducedMotion": true browses both sides with prefers-reduced-motion: reduce, for designs
+// whose script animates on a clock (floating cards, a marquee): their own reduced-motion branch then
+// renders a still frame, so design and port compare pixel for pixel. Check the motion itself apart.
+let REDUCED = false;
 export function readWork(file) {
   const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  REDUCED = !!cfg.reducedMotion;
   const byKey = Object.fromEntries(cfg.pages.map(p => [p.key, p]));
   const pages = cfg.pages.map(p => (p.of ? { ...byKey[p.of], title: undefined, ...p } : p));
   return { cfg, pages };
@@ -84,7 +89,7 @@ export function viewport(w) {
 
 // A context that drops trackers, with the console collected into `log`.
 export async function newPage(browser, w, log) {
-  const ctx = await browser.newContext({ viewport: viewport(w), deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: viewport(w), deviceScaleFactor: 1, reducedMotion: REDUCED ? 'reduce' : 'no-preference' });
   const page = await ctx.newPage();
   await page.route('**/*', r => (TRACKERS.test(r.request().url()) ? r.abort() : r.continue()));
   if (log) {

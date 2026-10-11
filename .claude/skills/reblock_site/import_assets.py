@@ -3,9 +3,9 @@
 
 Usage: import_assets.py <pages.json> <theme_dir> [--max-width=2400] [--quality=82]
                         [--subsets=latin,latin-ext] [--master=<dir>]
-- Images -> assets/img/ as WebP (SVG, GIF, ICO copied; a WebP larger than its source keeps the source),
-  wider than --max-width scaled down. Videos -> assets/video/ (made fast-start with ffmpeg when the
-  moov atom is at the end). Font files -> assets/fonts/.
+- Images -> assets/img/ as WebP (SVG, GIF, ICO copied; a WebP larger than its source keeps the source;
+  a WebP source is copied as it is), wider than --max-width scaled down. Videos -> assets/video/
+  (made fast-start with ffmpeg when the moov atom is at the end). Font files -> assets/fonts/.
 - assets/manifest.json maps each export path ('assets/photos/hero.jpg') to its theme file plus
   width/height: patterns print URLs with <prefix>_asset_url( 'assets/photos/hero.jpg' ).
 - Google Fonts the pages load -> assets/fonts/google/*.woff2 + assets/css/fonts.css (only --subsets).
@@ -126,7 +126,12 @@ for dirpath, dirs, files in os.walk(root):
             continue
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         entry = {'src': dst_rel}
-        if raster:
+        if raster and ext == '.webp' and Image.open(src).width <= MAX_W:
+            # Already a web image: re-encoding only loses detail (screenshots of text show it).
+            shutil.copyfile(src, dst)
+            with Image.open(src) as img:
+                entry.update(w=img.width, h=img.height)
+        elif raster:
             img = ImageOps.exif_transpose(Image.open(src))
             if img.mode not in ('RGB', 'RGBA'):
                 img = img.convert('RGBA' if ('A' in img.getbands() or 'transparency' in img.info) else 'RGB')
@@ -268,7 +273,7 @@ def rewrite_urls(css, css_rel):
     base = os.path.dirname(css_rel)
 
     def repl(m):
-        raw = m.group(2).strip()
+        raw = next(g for g in m.groups() if g is not None).strip()
         if re.match(r'^(data:|https?:|//|#|/)', raw):
             return m.group(0)
         path, _, frag = raw.partition('#')
@@ -279,7 +284,8 @@ def rewrite_urls(css, css_rel):
             return 'url("%s%s")' % (new, '#' + frag if frag else '')
         warnings.append('%s: url(%s) points to a file the export does not have' % (css_rel, raw))
         return m.group(0)
-    return re.sub(r'url\(\s*(["\']?)([^"\')]+)\1\s*\)', repl, css)
+    # Whole url() tokens, quoted ones first: a quoted data: URI can hold url(%23id) of its own.
+    return re.sub(r'''url\(\s*(?:"([^"]*)"|'([^']*)'|([^"')\s][^)]*?))\s*\)''', repl, css)
 
 
 def load_css(rel, depth=0):
