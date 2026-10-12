@@ -3,7 +3,9 @@
 // Per page: console and page errors, failed requests, PHP warnings in the HTML, broken images, hosts
 // other than the site's (a finished port loads nothing from the export's CDNs), horizontal overflow at
 // every width (with the elements that stick out), and the header menu from pages.json "menu"
-// ({ toggle, panel }) at 390: opens with its links, closes on Escape. Then every internal link once.
+// ({ toggle, panel }) at 390: opens with its links, closes on Escape. Then every internal link once,
+// query included, as a first visit: a fresh cookie jar that keeps what the redirects set (a link like
+// /checkout/?plan=growth fills a cart, then redirects to the checkout).
 // Ends with "all checks ok" or the list of problems.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -79,7 +81,7 @@ for (const p of want) {
   }
   for (const href of await page.evaluate(() => [...document.querySelectorAll('a[href]')].map(a => a.href))) {
     const u = new URL(href);
-    if (u.origin === origin && !links.has(u.origin + u.pathname)) links.set(u.origin + u.pathname, p.key);
+    if (u.origin === origin && !links.has(u.origin + u.pathname + u.search)) links.set(u.origin + u.pathname + u.search, p.key);
   }
   await ctx.close();
   console.log(`${p.key}: ${found.length ? found.length + ' problem(s)' : 'ok'}`);
@@ -94,10 +96,13 @@ for (const [target, from] of links) {
     if (!fs.existsSync(path.join(cfg.export, rel.endsWith('/') ? rel + 'index.html' : rel))) problems.push(`${from}: link to missing file ${rel}`);
     continue;
   }
-  const r = await fetch(target, { redirect: 'follow' }).catch(e => ({ status: e.message }));
-  if (r.status !== 200) { problems.push(`${from}: link ${target} → ${r.status}`); continue; }
+  const visit = await browser.newContext();
+  const r = await visit.request.get(target).catch(e => ({ status: () => e.message.split('\n')[0], text: async () => '' }));
+  const status = r.status(), html = status === 200 ? await r.text() : '';
+  await visit.close();
+  if (status !== 200) { problems.push(`${from}: link ${target} → ${status}`); continue; }
   // Plain permalinks (fresh Pete Panel sites) or a missing page: WordPress answers 200 with the front page.
-  const body = /<body[^>]*class="([^"]*)"/.exec(await r.text());
+  const body = /<body[^>]*class="([^"]*)"/.exec(html);
   if (new URL(target).pathname !== '/' && body && /(^|\s)home(\s|$)/.test(body[1])) problems.push(`${from}: link ${target} renders the front page (plain permalinks, or no such page)`);
 }
 console.log(`internal links checked: ${links.size}`);
