@@ -132,6 +132,9 @@ export async function settle(page, { maskVideos = false } = {}) {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.querySelectorAll('img[loading="lazy"]').forEach(i => { i.loading = 'eager'; });
     await Promise.all([...document.images].filter(i => !i.complete).map(i => new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 5000); })));
+    // Decoded too: an image WordPress marks decoding="async" (page content) can be painted blank in a
+    // full-page shot while a large file is still decoding.
+    await Promise.all([...document.images].map(i => Promise.race([i.decode().catch(() => {}), new Promise(r => setTimeout(r, 5000))])));
     // Videos show a frame, not a blank box or the poster: wait (up to 6 s) until every autoplaying
     // video and every video with a file has data. Polled, because a late loader (Reblock Page
     // Speed's videos after the page) may attach the file only after this point is reached.

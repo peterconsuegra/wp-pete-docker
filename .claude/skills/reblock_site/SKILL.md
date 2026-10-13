@@ -50,6 +50,7 @@ Playwright from the ozone-design-system install (`PLAYWRIGHT_DIR` overrides it) 
 | `prune.py <REPO> [--dry-run]` | Removes the imported files no pattern, template or stylesheet uses (a claude.ai/design project carries its explorations' images). |
 | `themecheck.py <REPO>` | Block markup the editor would reject, missing patterns/parts/assets, relative URLs, export page links. |
 | `sync.sh <REPO> <DEV_URL>` | themecheck, then a whole-folder copy into the site; clears the pattern cache and WP Fastest Cache files. |
+| `to_content.php` (`wp --user=<admin> eval-file`) | A design page's patterns → the page's own blocks, as the page renders them; live values as the theme's tokens, own-host URLs root-relative. Step 7. |
 
 `pages.json` fields:
 - `export`, `site`, `widths`;
@@ -228,6 +229,39 @@ For each page:
   `git -C "$REPO" archive --format=zip --prefix=$SLUG/ -o ~/Sites/cloned-themes/$SLUG-$(date +%Y%m%d).zip HEAD`.
   `.reblock` stays out of the zip.
 - Update `.reblock/` (pages.json, progress.md) and commit.
+
+## 7. Pages editable from WordPress (when Pedro asks for it)
+
+A finished theme draws each page from a template of patterns: the copy lives in theme files, so the
+block editor and an MCP connector (Ozone MCP) cannot change it. This step moves every design page
+into its own content, pixel for pixel (Ozone Polaris, 2026-10-13: 21 pages, the header and footer).
+
+1. The theme: `templates/canvas.html` (header part, `wp:post-content` with the main's tagName and
+   class, footer part) as a custom template "canvas" in theme.json, and `front-page.html` the same.
+   core/post-content always adds `entry-content`: keep it off the canvas's main when the theme styles
+   `.entry-content` as a prose column (a `render_block_core/post-content` filter).
+2. Live values (prices from products, a WP_Query section): the theme prints them as tokens while
+   `$GLOBALS['<prefix>_tokens']` is true and fills them in on `render_block` (Polaris:
+   `inc/content.php`, `{{ozp:price plan.m}}`, `{{ozp:section blog-grid}}`; the converter emits
+   `<prefix>_token( 'section', <name> )` for a pattern made of posts). A digit-split price stays one
+   token in one span, expanded per character at render.
+3. Before: `curl` every page's HTML and `shots.mjs … --tag=before`.
+4. Per page, one process each (a page's patterns may cache per request):
+   `wp --user=<admin> eval-file to_content.php <prefix> <path|front> [save] [<template file>]`.
+   Dry runs first: no notices, no `problems` (PHP, pattern refs or the own host left, smilies,
+   "Wordpress", shortcodes: what the_content would change). sync.sh does not copy `.reblock/`: pass
+   the original template (`git show`) as the last argument. A `<main>` with classes the canvas lacks
+   (`ozp-main--case`) keeps them on a group of its own; sections after `<main>` follow it.
+5. Header and footer: blocks in their parts (template parts, editable like templates); a footer
+   whose variants differ in skin only is one footer plus a `render_block_core/template-part` filter;
+   a header with page-dependent variants keeps each variant as a block, and the filter shows the
+   page's (Polaris: `inc/parts.php`).
+6. After: the HTML of every page, normalized (own host, `decoding`, `loading`/`fetchpriority` that
+   the_content adds, Yoast's description and reading time), equals the before, apart from main's
+   wrapper; then `shots.mjs … --tag=after` and `compare.py --pair=before,after`: 0 px on every page.
+7. The page templates go to `.reblock/templates/` (the record the converter reads); the patterns
+   stay (the CSS build, the live sections). Production: push the content and the canvas meta first
+   (the old theme ignores a template it does not have), then the theme.
 
 ## Report (the final message)
 
