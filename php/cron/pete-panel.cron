@@ -1,5 +1,6 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Pete Laravel scheduler
-* * * * * www-data cd /var/www/html/Pete && /usr/local/bin/php artisan schedule:run 
+# Pete Laravel scheduler (daily backups, SSL renewal, uploads cleanup: app/Console/Kernel.php).
+# Cron ignores a line that does not end with a newline: keep one after the last line.
+* * * * * www-data cd /var/www/html/Pete && /usr/local/bin/php artisan schedule:run
