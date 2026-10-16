@@ -402,8 +402,24 @@ function __PREFIX___srcset( $url ) {
 }
 
 /**
+ * The first class of a class attribute ('' for none): with its parent's, it names a photo's place.
+ *
+ * @param mixed $class Class attribute value.
+ * @return string
+ */
+function __PREFIX___first_class( $class ) {
+	return is_string( $class ) && preg_match( '/\S+/', $class, $m ) ? $m[0] : '';
+}
+
+/**
  * Theme photos get their copies as srcset, with the sizes measured for their place on this page
- * (includes/site.php "sizes"). A photo in a place not measured is left alone.
+ * (includes/site.php "sizes"; "sizes_at" when the same photo shows at other widths elsewhere on the
+ * page, by "<parent's first class>><its first class>"); a photo in a place not measured keeps its src
+ * only. And they wait: a /reblock_site design's <img>s have no width and height, so WordPress
+ * adds no loading="lazy" to them, and every photo of a page loads at once (9 MB on Ozone Polaris's
+ * home page). Each theme photo but the logo gets loading="lazy" decoding="async"; the page's
+ * first-screen image loses them again in __PREFIX___img_tag() (fetchpriority="high" instead), and photos in
+ * a "load_together" element load all at once when it comes near (__PREFIX___print_load_together()).
  *
  * @param string $html  Rendered block.
  * @param array  $block Block.
@@ -413,31 +429,65 @@ function __PREFIX___images( $html, $block ) {
 	if ( ! in_array( $block['blockName'] ?? '', array( 'core/html', 'core/image' ), true ) || false === strpos( $html, '<img' ) || ! __PREFIX___on( 'images' ) ) {
 		return $html;
 	}
-	$sizes = __PREFIX___site()['sizes'][ __PREFIX___page_key() ] ?? array();
-	if ( ! $sizes ) {
-		return $html;
-	}
-	return preg_replace_callback(
-		'/<img\b[^>]*>/i',
-		function ( $m ) use ( $sizes ) {
-			$img = $m[0];
-			if ( preg_match( '/\ssrcset=/i', $img ) || ! preg_match( '/\ssrc="([^"]+)"/i', $img, $s ) ) {
-				return $img;
+	$page  = __PREFIX___page_key();
+	$sizes = __PREFIX___site()['sizes'][ $page ] ?? array();
+	$at    = __PREFIX___site()['sizes_at'][ $page ] ?? array();
+	$theme = get_stylesheet_directory_uri() . '/';
+	$void  = array( 'AREA', 'BASE', 'BR', 'COL', 'EMBED', 'HR', 'INPUT', 'LINK', 'META', 'SOURCE', 'TRACK', 'WBR' );
+	$open  = array(); // [ tag, first class ] of each open element, outermost first.
+	$tags  = new WP_HTML_Tag_Processor( $html );
+	while ( $tags->next_tag( array( 'tag_closers' => 'visit' ) ) ) {
+		$name = $tags->get_tag();
+		if ( $tags->is_tag_closer() ) {
+			for ( $i = count( $open ) - 1; $i >= 0; $i-- ) {
+				if ( $open[ $i ][0] === $name ) {
+					array_splice( $open, $i );
+					break;
+				}
 			}
-			$url  = html_entity_decode( $s[1] );
-			$file = basename( (string) strtok( $url, '?#' ) );
-			$set  = isset( $sizes[ $file ] ) ? __PREFIX___srcset( $url ) : '';
-			if ( ! $set ) {
-				return $img;
+			continue;
+		}
+		if ( 'IMG' !== $name ) {
+			if ( ! in_array( $name, $void, true ) ) {
+				$open[] = array( $name, __PREFIX___first_class( $tags->get_attribute( 'class' ) ) );
 			}
-			$img = preg_replace( '/^<img\b/i', '<img srcset="' . esc_attr( $set ) . '" sizes="' . esc_attr( $sizes[ $file ] ) . '"', $img );
+			continue;
+		}
+		$url = $tags->get_attribute( 'src' );
+		if ( ! is_string( $url ) || 0 !== strpos( __PREFIX___absolute_url( $url ), $theme ) ) {
+			continue;
+		}
+		$file = basename( (string) strtok( $url, '?#' ) );
+		$set  = null === $tags->get_attribute( 'srcset' ) && isset( $sizes[ $file ] ) ? __PREFIX___srcset( $url ) : '';
+		if ( $set ) {
+			// Its place's sizes. A parent outside this block's markup (a group's wrapper) is unknown here:
+			// then the one place of this photo with the same class of its own, if only one has it.
+			$own = '>' . __PREFIX___first_class( $tags->get_attribute( 'class' ) );
+			if ( $open ) {
+				$size = $at[ $file ][ end( $open )[1] . $own ] ?? null;
+			} else {
+				$same = array_filter(
+					$at[ $file ] ?? array(),
+					function ( $key ) use ( $own ) {
+						return substr( $key, -strlen( $own ) ) === $own;
+					},
+					ARRAY_FILTER_USE_KEY
+				);
+				$size = 1 === count( $same ) ? reset( $same ) : null;
+			}
+			$tags->set_attribute( 'srcset', $set );
+			$tags->set_attribute( 'sizes', $size ?? $sizes[ $file ] );
 			// The original's aspect ratio, whichever copy loads (__PREFIX___print_ratio_rule()).
 			$entry = __PREFIX___variant_entry( $url );
-			$ratio = '--__PREFIX__-ar:' . (int) $entry['w'] . '/' . (int) $entry['h'] . ';';
-			return preg_match( '/\sstyle="/i', $img ) ? preg_replace( '/(\sstyle=")/i', '$1' . $ratio, $img, 1 ) : preg_replace( '/^<img\b/i', '<img style="' . $ratio . '"', $img );
-		},
-		$html
-	);
+			$style = $tags->get_attribute( 'style' );
+			$tags->set_attribute( 'style', '--__PREFIX__-ar:' . (int) $entry['w'] . '/' . (int) $entry['h'] . ';' . ( is_string( $style ) ? $style : '' ) );
+		}
+		if ( false === stripos( $file, 'logo' ) && null === $tags->get_attribute( 'loading' ) ) {
+			$tags->set_attribute( 'loading', 'lazy' );
+			$tags->set_attribute( 'decoding', 'async' );
+		}
+	}
+	return $tags->get_updated_html();
 }
 add_filter( 'render_block', '__PREFIX___images', 10, 2 );
 
@@ -454,6 +504,27 @@ function __PREFIX___print_ratio_rule() {
 	}
 }
 add_action( 'wp_head', '__PREFIX___print_ratio_rule', 2 );
+
+/**
+ * Photos in a "load_together" element (includes/site.php) all start loading once it comes within
+ * 1250 px of the screen. A marquee moves its photos into view sideways inside a clipped strip, where
+ * each lazy photo would start only as it enters the strip, and slide in blank; eager, they cost Ozone
+ * Polaris's first screen 320 KB on phones (2026-10-16).
+ */
+function __PREFIX___print_load_together() {
+	$classes = __PREFIX___site()['load_together'] ?? array();
+	if ( ! $classes || ! __PREFIX___on( 'images' ) ) {
+		return;
+	}
+	$selector = implode( ',', array_map( function ( $c ) {
+		return '.' . $c;
+	}, $classes ) );
+	printf(
+		"<script id=\"__PREFIX__-together\">(function(){var els=document.querySelectorAll(%s),go=function(el){el.querySelectorAll('img[loading=lazy]').forEach(function(i){i.loading='eager';});};if(!('IntersectionObserver' in window)){els.forEach(go);return;}var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){io.unobserve(e.target);go(e.target);}});},{rootMargin:'1250px 0px'});els.forEach(function(el){io.observe(el);});})();</script>\n",
+		wp_json_encode( $selector )
+	);
+}
+add_action( 'wp_footer', '__PREFIX___print_load_together', 99 );
 
 /* Videos after the first paint --------------------------------------------------------------------- */
 

@@ -3,7 +3,7 @@
 
   python3 scaffold_plugin.py <plugin_repo> --name="Play Method Page Speed" --site="The Play Method" \\
       --theme=playmethod-blocks --prefix=pmps [--hints=a.json,b.json] [--photos=a.json,b.json] \\
-      [--keep-poster=<class>] [--delay=<handle prefix>,...] [--theme-dir=<theme repo>] [--force]
+      [--keep-poster=<class>] [--delay=<handle prefix>,...] [--load-together=<class>,...] [--theme-dir=<theme repo>] [--force]
 
 The folder name is the plugin's slug and must end in -page-speed (<brand>-page-speed). The prefix
 names the PHP functions and data- attributes: a few lowercase letters ending in "ps" (pmps).
@@ -13,6 +13,7 @@ merged in order (the pages file, then the posts file). They become includes/site
 bin/variants.py; every other file is the template with the names filled in.
 --keep-poster: the class of the video whose poster shows at once ('' = each page's first video).
 --delay: script handle prefixes to hold back until the first interaction (only on the owner's yes).
+--load-together: classes of clipped strips (marquees) whose photos all load once the strip comes near.
 Then: python3 <repo>/bin/variants.py, check includes/site.php against Lighthouse, git init, commit.
 """
 import argparse, datetime, json, pathlib, re, sys
@@ -30,6 +31,7 @@ ap.add_argument('--hints', default='')
 ap.add_argument('--photos', default='')
 ap.add_argument('--keep-poster', default='')
 ap.add_argument('--delay', default='')
+ap.add_argument('--load-together', default='')
 ap.add_argument('--theme-dir', default='')
 ap.add_argument('--force', action='store_true')
 a = ap.parse_args()
@@ -73,7 +75,7 @@ def php(v, depth=2):
 # the rest go to that draft's own pages (a posts-only probe must not preload its fonts on every page).
 hints = load(a.hints)
 fonts = [f for f in (hints[0].get('fonts', []) if hints else []) if all(f in h.get('fonts', []) for h in hints)]
-pages, sizes, widths = {}, {}, {}
+pages, sizes, sizes_at, widths = {}, {}, {}, {}
 for h in hints:
     extra = [f for f in h.get('fonts', []) if f not in fonts]
     for key, page in (h.get('pages') or {}).items():
@@ -92,11 +94,15 @@ for ph in load(a.photos):
         for key, place in photo['places'].items():
             if place.get('sizes'):
                 sizes.setdefault(key, {})[rel.rsplit('/', 1)[-1]] = place['sizes']
+            if place.get('sizes_at'):
+                sizes_at.setdefault(key, {})[rel.rsplit('/', 1)[-1]] = place['sizes_at']
 site = {
     'theme': a.theme,
     'fonts': fonts,
     'pages': pages,
     'sizes': sizes,
+    'sizes_at': sizes_at,
+    'load_together': [c.strip().lstrip('.') for c in a.load_together.split(',') if c.strip()],
     'keep_poster': a.keep_poster,
     'delay': [d.strip() for d in a.delay.split(',') if d.strip()],
 }

@@ -12,6 +12,12 @@
  *                renders: an <img> with its srcset, a <video>'s poster, or the first <img> inside),
  *                [ 'image' => theme-relative path or URL ] or [ 'featured' => true ].
  *   sizes        Page key => photo file name => the sizes attribute of that photo there (measured).
+ *   sizes_at     Page key => photo file name => place => sizes, where the same photo shows at other
+ *                widths elsewhere on that page; a place is "<parent's first class>><its first class>".
+ *                Other places of that photo take "sizes" (its widest place).
+ *   load_together  Classes whose photos all start loading when the element comes near the screen
+ *                (the images feature): a marquee moves its photos into view sideways, inside a clipped
+ *                strip, where each lazy photo would start only as it enters the strip and slide in blank.
  *   keep_poster  Class of the video whose poster shows at once ('' = the first video of each page).
  *                Every other poster waits with its video.
  *   delay        Script handle prefixes held back until the first interaction. Empty: no such feature.
@@ -34,6 +40,8 @@ function __PREFIX___site() {
 		'fonts'       => array(),
 		'pages'       => array(),
 		'sizes'       => array(),
+		'sizes_at'    => array(),
+		'load_together' => array(),
 		'keep_poster' => '',
 		'delay'       => array(),
 	);

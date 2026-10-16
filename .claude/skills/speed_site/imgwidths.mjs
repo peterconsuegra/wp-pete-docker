@@ -4,7 +4,8 @@
 // Every page (states skipped) opens once and is resized from --from to --to px wide; every theme photo
 // (an <img> or a video poster under the theme's folder, raster files only) is measured at each width.
 // Per photo and page: a sizes value fitted to the measurements, straight calc() segments with a new
-// one wherever the layout jumps. Widths are probed on multiples of --step from --from, so a breakpoint
+// one wherever the layout jumps; for a photo shown twice, its widest place at each width, and each
+// other place's own sizes (sizes_at, by "<parent's first class>><its first class>"). Widths are probed on multiples of --step from --from, so a breakpoint
 // between two probes is written at the lower one (640, 900, 1000, 1200 and 1440 are probed exactly).
 // Per photo: the copy widths worth making, 480 / 720 / 1000 / 1400 / 2000 below its own width and up to
 // twice its widest place. Files under 30 KB, and photos never shown below half their width at 2x, get none.
@@ -24,7 +25,9 @@ const LADDER = [480, 720, 1000, 1400, 2000];
 const measure = () => [...document.querySelectorAll('img, video')].map(el => {
   const poster = el.tagName === 'VIDEO' ? (el.getAttribute('poster') || ([...el.attributes].find(a => /-poster$/.test(a.name)) || {}).value || '') : '';
   const src = el.tagName === 'VIDEO' ? poster : (el.getAttribute('src') || '');
-  return { src: src.split(/[?#]/)[0], kind: el.tagName === 'VIDEO' ? 'poster' : 'img', w: Math.round(el.getBoundingClientRect().width * 10) / 10 };
+  // The place: "<parent's first class>><its first class>", as the plugin names it while rendering.
+  const first = e => ((e && e.getAttribute('class')) || '').trim().split(/\s+/)[0] || '';
+  return { src: src.split(/[?#]/)[0], kind: el.tagName === 'VIDEO' ? 'poster' : 'img', w: Math.round(el.getBoundingClientRect().width * 10) / 10, at: first(el.parentElement) + '>' + first(el) };
 }).filter(x => /\/wp-content\/themes\/[^/]+\/.+\.(webp|jpe?g|png|avif)$/i.test(x.src));
 
 // sizes from [[viewport, width]]: straight segments through measured points (1.5 px tolerance).
@@ -73,10 +76,15 @@ for (const p of want) {
       // of its places at each width: its sizes must never pick a copy smaller than a place, and the
       // browser then fetches one copy for both (Ozone Polaris home, 2026-10-16: the tiles' sizes put a
       // 488 px copy into a 604 px place).
-      const place = (ph.places[p.key] ||= { kind: m.kind, series: [] });
-      const at = place.series.find(([v]) => v === w);
-      if (at) at[1] = Math.max(at[1], m.w);
+      const place = (ph.places[p.key] ||= { kind: m.kind, series: [], at: {} });
+      const widest = place.series.find(([v]) => v === w);
+      if (widest) widest[1] = Math.max(widest[1], m.w);
       else place.series.push([w, m.w]);
+      // And each place on its own, so a small tile in the first screen can take a small copy.
+      const own = (place.at[m.at] ||= []);
+      const here = own.find(([v]) => v === w);
+      if (here) here[1] = Math.max(here[1], m.w);
+      else own.push([w, m.w]);
     }
   }
 }
@@ -99,9 +107,17 @@ for (const [rel, ph] of Object.entries(photos)) {
   for (const [key, pl] of Object.entries(ph.places)) {
     const xs = pl.series.map(([, x]) => x).filter(x => x > 0);
     const place = { kind: pl.kind, min: Math.round(Math.min(...xs)), max: Math.round(Math.max(...xs)) };
-    if (pl.kind === 'img') place.sizes = fit(pl.series.sort((a, b) => a[0] - b[0]));
+    if (pl.kind === 'img') {
+      place.sizes = fit(pl.series.sort((a, b) => a[0] - b[0]));
+      // Places of this photo shown at other widths than its widest: their own sizes (sizes_at).
+      const shownAt = Object.keys(pl.at).filter(k => pl.at[k].some(([, x]) => x > 0));
+      const own = {};
+      if (shownAt.length > 1) for (const k of shownAt) { const sz = fit(pl.at[k].sort((a, b) => a[0] - b[0])); if (sz !== place.sizes) own[k] = sz; }
+      if (Object.keys(own).length) place.sizes_at = own;
+    }
     entry.places[key] = place;
     console.log(`  ${key.padEnd(14)} ${pl.kind.padEnd(6)} ${place.min}-${place.max} px  ${place.sizes ? 'sizes="' + place.sizes + '"' : '(poster: no sizes; the loader picks a copy by width)'}`);
+    for (const [k, sz] of Object.entries(place.sizes_at || {})) console.log(`  ${''.padEnd(14)} at ${k}: sizes="${sz}"`);
   }
   out.photos[rel] = entry;
 }

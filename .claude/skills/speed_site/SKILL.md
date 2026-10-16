@@ -158,6 +158,15 @@ Then check `PLUGIN/includes/site.php` against Lighthouse, and edit it:
 - `sizes` come measured; check one against the design's columns if it looks odd. A photo with no
   sizes for a page is left alone there.
 - `keep_poster`: the class of the video in the first screen, or '' (each page's first video).
+- `sizes_at` comes measured too: where a photo shows at other widths elsewhere on the same page (a
+  small tile in the first screen, a large one further down), each place gets its own sizes, named
+  "<parent's first class>><its first class>"; other places take the widest.
+- `load_together`: the classes of clipped strips that move photos in sideways (a marquee,
+  `--load-together=` in the scaffold). Their photos stay lazy and all start loading once the strip
+  is within 1250 px; lazy alone, they slide in blank, and eager they weigh on the first screen.
+- Fonts that are .otf: check `curl -sI -H 'Accept-Encoding: gzip' <font URL>` says gzip. WP Fastest
+  Cache types .otf as application/x-font-opentype and its gzip rules miss that type; Ozone Polaris
+  Page Speed's `font_gzip` feature (an .htaccess block) is the fix to copy.
 
 `git init -b main && git add -A && git commit -m "<Name> 1.0.0 (/speed_site)"` in PLUGIN.
 
