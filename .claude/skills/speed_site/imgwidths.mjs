@@ -69,8 +69,14 @@ for (const p of want) {
       const t = m.src.match(/\/wp-content\/themes\/([^/]+)\/(.+)$/);
       theme = theme || t[1];
       const ph = (photos[t[2]] ||= { url: m.src.startsWith('http') ? m.src : origin + m.src, places: {} });
+      // A photo shown twice on a page (a small tile up top, a large one further down) gets the widest
+      // of its places at each width: its sizes must never pick a copy smaller than a place, and the
+      // browser then fetches one copy for both (Ozone Polaris home, 2026-10-16: the tiles' sizes put a
+      // 488 px copy into a 604 px place).
       const place = (ph.places[p.key] ||= { kind: m.kind, series: [] });
-      if (!place.series.some(([v]) => v === w)) place.series.push([w, m.w]);
+      const at = place.series.find(([v]) => v === w);
+      if (at) at[1] = Math.max(at[1], m.w);
+      else place.series.push([w, m.w]);
     }
   }
 }

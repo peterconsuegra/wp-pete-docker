@@ -46,14 +46,14 @@ for (const p of paths) {
       const used = new Set(performance.getEntriesByType('resource').map(e => e.name));
       const preloads = [...document.querySelectorAll('link[rel=preload]')].filter(l => !l.media || matchMedia(l.media).matches).map(l => ({ href: l.href, used: used.has(l.href) || [...used].some(u => l.imageSrcset && l.imageSrcset.includes(u)) }));
       // In view: must play. Near (the loader looks one screen ahead): may load. Further: must wait.
-      const videos = [...document.querySelectorAll('video')].map(v => { const b = v.getBoundingClientRect(); return { cls: v.className || 'video', inView: b.top < innerHeight && b.bottom > 0, near: b.top < 2 * innerHeight && b.bottom > -innerHeight, playing: !v.paused && v.readyState > 1, src: v.currentSrc.split('/').pop() }; });
+      const videos = [...document.querySelectorAll('video')].map(v => { const b = v.getBoundingClientRect(); return { cls: v.className || 'video', inView: b.top < innerHeight && b.bottom > 0, near: b.top < 2 * innerHeight && b.bottom > -innerHeight, playing: !v.paused && v.readyState > 1, autoplay: v.autoplay, src: v.currentSrc.split('/').pop() }; });
       // Video files actually requested (a <source> without src still fires loadstart while parsing: not a load).
       const starts = performance.getEntriesByType('resource').filter(e => /\.(mp4|webm)(\?|$)/.test(e.name)).map(e => [e.name.split('/').pop(), e.startTime]);
       return { preloads, videos, fcp: window.__ps.fcp, starts, held: document.querySelectorAll('script[data-__PREFIX__-delay]').length };
     });
     for (const pl of r.preloads) if (!pl.used) bad('preload not used: ' + pl.href);
     for (const v of r.videos) {
-      if (v.inView && !v.playing) bad(`video ${v.cls} in view but not playing`);
+      if (v.inView && v.autoplay && !v.playing) bad(`video ${v.cls} in view but not playing`); // a video without autoplay waits for its play button
       if (!v.near && v.src) bad(`video ${v.cls} far out of view but loading (${v.src})`);
     }
     for (const [file, t] of r.starts) if (r.fcp === null || t < r.fcp) bad(`video file ${file} requested at ${Math.round(t)} ms, before the first paint (${r.fcp === null ? 'none' : Math.round(r.fcp) + ' ms'})`);
@@ -63,7 +63,7 @@ for (const p of paths) {
     await page.waitForTimeout(2500);
     const after = await page.evaluate(() => ({
       videos: [...document.querySelectorAll('video')].map(v => ({ cls: v.className || 'video', started: !!v.currentSrc, poster: (v.getAttribute('poster') || '').split('/').pop(), need: Math.round(v.getBoundingClientRect().width * devicePixelRatio) })),
-      imgs: [...document.querySelectorAll('img[srcset*="__SLUG__"]')].map(i => ({ file: i.currentSrc.split('/').pop(), need: Math.round(i.getBoundingClientRect().width * devicePixelRatio) })),
+      imgs: [...document.querySelectorAll('img[srcset*="__SLUG__"]')].map(i => ({ file: i.currentSrc.split('/').pop(), need: Math.round(i.getBoundingClientRect().width * devicePixelRatio), shown: i.getClientRects().length > 0 })),
       held: document.querySelectorAll('script[data-__PREFIX__-delay]').length,
     }));
     for (const v of after.videos) {
@@ -71,8 +71,13 @@ for (const p of paths) {
       console.log(`   video ${v.cls}: ${v.started ? 'started' : 'idle'}, poster ${v.poster} for ${v.need} px`);
     }
     for (const i of after.imgs) {
+      // A lazy photo hidden at this width (display: none) never loads, as it should not.
+      if (!i.shown) { console.log(`   photo hidden here${i.file ? ': ' + i.file : ', not loaded'}`); continue; }
       console.log(`   photo ${i.file} for ${i.need} px`);
       if (!i.file) bad('a photo never loaded');
+      // A copy well under its place looks soft (Chrome may pick one a little under: its density rule).
+      const copy = (i.file || '').match(/-(\d+)\.webp$/);
+      if (copy && Number(copy[1]) < 0.8 * i.need) bad(`photo ${i.file} is a copy narrower than its place (${i.need} px): check that page's sizes`);
     }
     if (r.held) {
       console.log(`   held-back tags: ${r.held} before the first interaction, ${after.held} after`);

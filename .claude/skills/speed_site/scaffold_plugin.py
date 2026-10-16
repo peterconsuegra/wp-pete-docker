@@ -86,7 +86,9 @@ for ph in load(a.photos):
     for rel, photo in (ph.get('photos') or {}).items():
         if not photo.get('copies'):
             continue
-        widths[rel] = photo['copies']
+        # A photo in both probes (pages, posts) gets the copies of both: the later file must not drop
+        # the copies the earlier one's places need.
+        widths[rel] = sorted(set(widths.get(rel, [])) | set(photo['copies']))
         for key, place in photo['places'].items():
             if place.get('sizes'):
                 sizes.setdefault(key, {})[rel.rsplit('/', 1)[-1]] = place['sizes']

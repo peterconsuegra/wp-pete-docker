@@ -47,19 +47,35 @@ function __PREFIX___page_needs() {
 /* Theme files --------------------------------------------------------------------------------- */
 
 /**
+ * A root-relative URL ("/wp-content/themes/…", how pages whose content moved into the page itself
+ * link the theme's files) made absolute, so it compares with the theme's URL.
+ *
+ * @param string $url URL.
+ * @return string
+ */
+function __PREFIX___absolute_url( $url ) {
+	$url = (string) $url;
+	if ( 0 === strpos( $url, '/' ) && 0 !== strpos( $url, '//' ) ) {
+		$home = wp_parse_url( home_url() );
+		return ( $home['scheme'] ?? 'https' ) . '://' . ( $home['host'] ?? '' ) . ( isset( $home['port'] ) ? ':' . $home['port'] : '' ) . $url;
+	}
+	return $url;
+}
+
+/**
  * Theme file behind a theme URL ('' when the URL is not a file of the active theme).
  *
  * @param string $url URL.
  * @return string
  */
 function __PREFIX___theme_file( $url ) {
-	$url  = strtok( (string) $url, '?#' );
+	$url  = __PREFIX___absolute_url( strtok( (string) $url, '?#' ) );
 	$base = get_stylesheet_directory_uri();
 	if ( 0 !== strpos( $url, $base . '/' ) ) {
 		return '';
 	}
 	$root = realpath( get_stylesheet_directory() );
-	$file = realpath( $root . substr( $url, strlen( $base ) ) );
+	$file = realpath( $root . rawurldecode( substr( $url, strlen( $base ) ) ) );
 	return ( $file && 0 === strpos( $file, $root . DIRECTORY_SEPARATOR ) && is_file( $file ) ) ? $file : '';
 }
 
@@ -218,7 +234,9 @@ function __PREFIX___print_preloads() {
 	foreach ( __PREFIX___page_needs()['fonts'] as $font ) {
 		$url = __PREFIX___theme_url( $font );
 		if ( $url ) {
-			printf( '<link rel="preload" as="font" type="font/woff2" href="%s" crossorigin>' . "\n", esc_url( $url ) );
+			// The file's own type (a woff2 type on a .ttf is wrong; a type the browser lacks skips the preload).
+			$type = array( 'woff2' => 'font/woff2', 'woff' => 'font/woff', 'ttf' => 'font/ttf', 'otf' => 'font/otf' )[ strtolower( pathinfo( $font, PATHINFO_EXTENSION ) ) ] ?? '';
+			printf( '<link rel="preload" as="font"%s href="%s" crossorigin>' . "\n", $type ? ' type="' . $type . '"' : '', esc_url( $url ) );
 		}
 	}
 }
@@ -241,8 +259,13 @@ function __PREFIX___img_tag( $html ) {
 	}
 	$src = html_entity_decode( $m[1] );
 	foreach ( $items as $item ) {
-		if ( $item['url'] === $src ) {
+		// An item for some widths only (media) is fetched by its preload there; boosting the <img>
+		// would fetch it first at every width, ahead of the first screen's real element elsewhere.
+		if ( $item['url'] === $src && '' === (string) ( $item['media'] ?? '' ) ) {
 			$html = preg_replace( '/\s(loading|fetchpriority)="[^"]*"/i', '', $html );
+			// WordPress gives lazy images sizes="auto, …"; on an eager image Chrome reads that as 100vw
+			// and fetches a bigger copy than the preload's (two downloads of the first-screen photo).
+			$html = preg_replace( '/(\ssizes=")auto,\s*/i', '$1', $html );
 			return preg_replace( '/^<img\b/i', '<img fetchpriority="high"', $html );
 		}
 	}
@@ -271,12 +294,16 @@ function __PREFIX___inline_style( $tag, $handle, $href, $media ) {
 	}
 	$dir = dirname( strtok( $href, '?#' ) );
 	$css = preg_replace_callback(
-		'/url\(\s*([\'"]?)([^\'")]+)\1\s*\)/i',
+		// A quoted url() is matched whole, so a url() inside a data: URI (an SVG's filter='url(%23g)')
+		// is never rewritten: quotes put into it would end the CSS string, and the whole declaration
+		// with it (the grain buttons lost their background, 2026-10-16).
+		'/url\(\s*(?:"([^"]*)"|\'([^\']*)\'|([^\'")\s]+))\s*\)/i',
 		function ( $m ) use ( $dir ) {
-			if ( preg_match( '#^(data:|https?:|//|/|\#)#i', trim( $m[2] ) ) ) {
+			$url = trim( ( $m[1] ?? '' ) . ( $m[2] ?? '' ) . ( $m[3] ?? '' ) );
+			if ( '' === $url || preg_match( '#^(data:|https?:|//|/|\#|%23)#i', $url ) ) {
 				return $m[0];
 			}
-			return 'url("' . __PREFIX___resolve_url( $dir, trim( $m[2] ) ) . '")';
+			return 'url("' . __PREFIX___resolve_url( $dir, $url ) . '")';
 		},
 		(string) file_get_contents( $file )
 	);
@@ -341,18 +368,28 @@ function __PREFIX___variants() {
 }
 
 /**
+ * A theme photo's entry in variants.json ([ 'w', 'h', 'variants' ]), or null.
+ *
+ * @param string $url The theme photo's URL.
+ * @return array|null
+ */
+function __PREFIX___variant_entry( $url ) {
+	$base = get_stylesheet_directory_uri() . '/';
+	$path = __PREFIX___absolute_url( strtok( (string) $url, '?#' ) );
+	if ( 0 !== strpos( $path, $base ) ) {
+		return null;
+	}
+	return __PREFIX___variants()[ rawurldecode( substr( $path, strlen( $base ) ) ) ] ?? null;
+}
+
+/**
  * The srcset of a theme photo: its copies, then the theme's own file ('' when it has no copies).
  *
  * @param string $url The theme photo's URL.
  * @return string
  */
 function __PREFIX___srcset( $url ) {
-	$base = get_stylesheet_directory_uri() . '/';
-	$path = strtok( (string) $url, '?#' );
-	if ( 0 !== strpos( $path, $base ) ) {
-		return '';
-	}
-	$entry = __PREFIX___variants()[ substr( $path, strlen( $base ) ) ] ?? null;
+	$entry = __PREFIX___variant_entry( $url );
 	if ( ! $entry ) {
 		return '';
 	}
@@ -393,12 +430,30 @@ function __PREFIX___images( $html, $block ) {
 			if ( ! $set ) {
 				return $img;
 			}
-			return preg_replace( '/^<img\b/i', '<img srcset="' . esc_attr( $set ) . '" sizes="' . esc_attr( $sizes[ $file ] ) . '"', $img );
+			$img = preg_replace( '/^<img\b/i', '<img srcset="' . esc_attr( $set ) . '" sizes="' . esc_attr( $sizes[ $file ] ) . '"', $img );
+			// The original's aspect ratio, whichever copy loads (__PREFIX___print_ratio_rule()).
+			$entry = __PREFIX___variant_entry( $url );
+			$ratio = '--__PREFIX__-ar:' . (int) $entry['w'] . '/' . (int) $entry['h'] . ';';
+			return preg_match( '/\sstyle="/i', $img ) ? preg_replace( '/(\sstyle=")/i', '$1' . $ratio, $img, 1 ) : preg_replace( '/^<img\b/i', '<img style="' . $ratio . '"', $img );
 		},
 		$html
 	);
 }
 add_filter( 'render_block', '__PREFIX___images', 10, 2 );
+
+/**
+ * A copy's height is a whole number of pixels, so its aspect ratio can't always be the original's
+ * (1073 x 628 has no smaller exact copy). Where a photo's height follows its width, the layout then
+ * moves by a fraction of a pixel, enough to put text below it 1 px higher (Ozone Polaris,
+ * 2026-10-16). Each photo with copies carries the original's ratio and this rule applies it. :where()
+ * gives it no specificity: any aspect-ratio of the design's own still wins.
+ */
+function __PREFIX___print_ratio_rule() {
+	if ( __PREFIX___on( 'images' ) ) {
+		echo '<style id="__PREFIX__-ratio">:where(img[style*="--__PREFIX__-ar"]){aspect-ratio:var(--__PREFIX__-ar)}</style>' . "\n";
+	}
+}
+add_action( 'wp_head', '__PREFIX___print_ratio_rule', 2 );
 
 /* Videos after the first paint --------------------------------------------------------------------- */
 

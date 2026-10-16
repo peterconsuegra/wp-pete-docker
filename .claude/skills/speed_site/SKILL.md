@@ -65,7 +65,7 @@ Python scripts that use Pillow run with the wp-pete-docker python (the scratchpa
 |---|---|
 | `lh.mjs <pages.json> <out> [keys] [--runs=3] [--form=mobile,desktop] [--compare=<before_out>] [--throttling=devtools]` | Lighthouse performance, per-metric medians, LCP element, render-blocking count; before → after table. HTTPS-Upgrades off (an http dev site would pay a failed https try). |
 | `lcpprobe.mjs <pages.json> [keys] --out=<hints.json>` | Each page's LCP element at 7 widths and the font files of its first screen: a draft of every-page fonts and per-page items (class hints survive content changes, e.g. a journal's lead post). |
-| `imgwidths.mjs <pages.json> [keys] --out=<photos.json>` | Every theme photo and video poster measured at 320-1920 px (step 20): a `sizes` fitted per page, and the copy widths worth making. |
+| `imgwidths.mjs <pages.json> [keys] --out=<photos.json>` | Every theme photo and video poster measured at 320-1920 px (step 20): a `sizes` fitted per page (a photo shown twice on a page gets its widest place at each width), and the copy widths worth making. |
 | `scaffold_plugin.py <PLUGIN> --name= --site= --theme= --prefix= --hints=a,b --photos=a,b [--keep-poster=<class>] [--delay=<handles>]` | The plugin from `plugin/`: names filled in, `includes/site.php` and `bin/variants.py` from the probes. Several hints/photos files are merged (pages, then posts). |
 | `PLUGIN/bin/variants.py` | The photo copies (WebP, the theme's quality) and `assets/img/variants.json`. |
 | `PLUGIN/bin/check.mjs <site> [paths]` | The definition of done, phone and desktop: from the page cache, no-cache on PHP HTML, no theme stylesheet links, preloads used, video files only after the first paint, the right photo copy, held-back tags run after a scroll, no console errors. Ends with "page speed checks ok". Works on production too. |
@@ -73,6 +73,7 @@ Python scripts that use Pillow run with the wp-pete-docker python (the scratchpa
 | `wpfc.sh <DEV_URL> on [backup_dir] \| status \| off` | WP Fastest Cache through its own `saveOption()`. `on` keeps a copy of `.htaccess` in backup_dir, never in the web root, and proves home comes from the cache by Apache. |
 | `psi_report.js` | Reads a PageSpeed Insights report page (see "Reading PageSpeed Insights"). |
 | `../reblock_site/shots.mjs … --tag=before\|after --mask-videos` + `compare.py --pair=before,after --diff` | Pixel proof that nothing moved. |
+| `photorects.mjs <pages.json> <rects.json> [keys]` + `outside.py <shots> <rects.json> <PLUGIN slug> [--bands]` | The pixel rule, checked: each page's image boxes (laid out as shots.mjs does), then the differing pixels outside the photos served from copies. Ends with "no differences outside the photo copies". |
 | `../reblock_site/sitecheck.mjs <pages.json> site` | Errors, overflow, menu, links. |
 
 WP Fastest Cache settings (fixed by `wpfc.sh`):
@@ -147,6 +148,12 @@ Then check `PLUGIN/includes/site.php` against Lighthouse, and edit it:
   the LCP. A font is every-page only if every page's first screen uses it. The scaffold keeps a
   posts-only probe's fonts on the posts. A site-wide Cormorant preload made The Play Method's Book
   (Jost only) 20 KB heavier and its LCP 0.1 s slower.
+- Whole OTF/TTF fonts (no WOFF2 subsets, as with commercial fonts): measure the home with no font
+  preloads at all. Lighthouse's simulation counts a request started before the first paint at high
+  priority as holding that paint, and these files are 40-120 KB. Ozone Polaris home on phones
+  (2026-10-16): 79-85 with three preloads, 82 with only the LCP heading's font, 97 with none. With the
+  CSS inline, the browser finds the fonts at the first layout anyway; a font swap then costs a little
+  CLS (0.035 there). Converting or subsetting a commercial font needs the owner's license OK.
 - `post`: the single template's image class, or `[ 'featured' => true ]`.
 - `sizes` come measured; check one against the design's columns if it looks odd. A photo with no
   sizes for a page is left alone there.
@@ -167,14 +174,25 @@ sh wpfc.sh $DEV_URL on "$WORK/backup"
 node "$PLUGIN/bin/check.mjs" $DEV_URL / /about/ <every page path> <a post path>   # "page speed checks ok"
 node ../reblock_site/shots.mjs "$WORK/pages.json" site "$WORK/shots" --tag=after --mask-videos
 python3 ../reblock_site/compare.py "$WORK/shots" --pair=before,after --diff         # see below
+node photorects.mjs "$WORK/pages.json" "$WORK/rects.json"                           # (and the posts file)
+python3 outside.py "$WORK/shots" "$WORK/rects.json" <BRAND>-page-speed --bands     # the pixel rule
 node ../reblock_site/sitecheck.mjs "$WORK/pages.json" site                          # "all checks ok"
 node lh.mjs "$WORK/pages.json" "$WORK/lh-after" --compare="$WORK/lh-before"
 ```
 
 - Pixels:
-  - 0 differ outside the photos that now come from copies. Inside them, a few levels of resampling.
-    Check the box of the differing pixels against the photo's rect, put the before/after crops side by
-    side, and say so in the report.
+  - 0 differ outside the photos that now come from copies (outside.py). Inside them, a few levels of
+    resampling: put the before/after crops side by side, and say so in the report.
+  - What outside.py caught on Ozone Polaris (2026-10-16), all fixed in the template:
+    - every grain button had lost its background: the CSS inliner rewrote the `url(%23g)` inside a
+      `data:` URI, and the quotes it added ended the CSS string;
+    - text 1 px higher below some photos: a copy's height rounds to whole pixels, so its aspect ratio
+      is off by a hair, enough to tip Chrome's 1/64 px layout rounding. variants.py picks widths with
+      whole-pixel heights, and the plugin gives each photo the original's ratio (a `:where()` rule);
+    - a 488 px copy in a 604 px place: imgwidths.mjs measured only a photo's first place on a page.
+  - Shot-to-shot noise is not a difference: a looping CSS animation (a floating mockup) and live data
+    (Calendly's open times still loading) differ between two shots of the same state too. Shoot that
+    page twice (`--tag=again`) and compare after with again before calling it noise.
   - Videos are masked in the shots (`--mask-videos`): headless Chrome paints the same video a few
     frames apart between runs.
 - Scores:
