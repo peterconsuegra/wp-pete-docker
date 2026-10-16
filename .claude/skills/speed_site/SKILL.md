@@ -294,6 +294,14 @@ and `prod-theplaymethod-site-plugin-20261007-1505/` (the site plugin).
     only on cold first runs with Chrome's headless shell (Lighthouse with
     `CHROME_PATH=~/Library/Caches/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-mac-arm64/chrome-headless-shell`),
     never in regular Chrome. Do not chase it in the page.
+- Ozone Polaris (2026-10-16): PageSpeed's phone held the first frame ~1 s on pages whose first screen
+  had the design's SVG-filter grain (a tiled `feTurbulence` background, also the home LCP element), a
+  full-screen `mix-blend-mode` overlay and glass cards with `backdrop-filter`; pages without them
+  (terms, case studies) painted at 0.33 s and scored 100. Local Lighthouse rarely reproduces it
+  (software rendering: `--disable-gpu --disable-gpu-compositing`, flaky). Fix that keeps the look:
+  leave those effects out of the first two frames, then switch them on (the grain as the same noise in
+  a CSS filter with `feTile`: no LCP candidate). PageSpeed itself is the only reliable judge: compare a
+  page with the effect against one without before changing anything.
 - Starting a video in the same frame as the first paint was suspected and ruled out (2026-10-07). The
   plugin still starts videos after the first paint: it costs nothing.
 - Judge production by PSI, or by Lighthouse with `--throttling=devtools`. Simulated runs from the Mac
