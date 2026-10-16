@@ -15,6 +15,9 @@ const FORMS = {
   phone: { viewport: { width: 412, height: 823 }, deviceScaleFactor: 1.75, isMobile: true, hasTouch: true },
   desktop: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
 };
+// Trackers never see these visits: a check on production must not count as traffic (it ran
+// unblocked on ozonegroup.co once, 2026-10-16). Their blocked requests are not console errors.
+const TRACKERS = /googletagmanager|google-analytics|googleadservices|googlesyndication|doubleclick|facebook\.(net|com)|connect\.facebook|tiktok|clarity\.ms|hotjar|analytics\./;
 const INIT = `
   window.__ps = { fcp: null };
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint') window.__ps.fcp = e.startTime; }).observe({ type: 'paint', buffered: true }); } catch (e) {}
@@ -31,11 +34,13 @@ for (const p of paths) {
     console.log(`${p} ${form}`);
     const ctx = await browser.newContext(opts);
     const page = await ctx.newPage();
+    await page.route('**/*', r => (TRACKERS.test(r.request().url()) ? r.abort() : r.continue()));
     await page.addInitScript(INIT);
     const errors = [];
-    page.on('console', m => { if (m.type() === 'error' || /preloaded using link preload but not used/.test(m.text())) errors.push(m.text().slice(0, 160)); });
+    page.on('console', m => { if ((m.type() === 'error' && !TRACKERS.test((m.location() || {}).url || '')) || /preloaded using link preload but not used/.test(m.text())) errors.push(m.text().slice(0, 160)); });
     page.on('pageerror', e => errors.push(String(e).slice(0, 160)));
-    const res = await page.goto(url, { waitUntil: 'load' });
+    const res = await page.goto(url, { waitUntil: 'load', timeout: 60000 }).catch(e => { bad(`did not load in 60 s (${e.message.split('\n')[0].slice(0, 80)})`); return null; });
+    if (!res) { await ctx.close(); continue; }
     const html = await res.text();
     if (!/WP Fastest Cache file was created/.test(html)) bad('not served from the page cache (no WP Fastest Cache comment)');
     if (new RegExp(`<link[^>]+rel=["']stylesheet["'][^>]+${THEME}`).test(html)) bad('a theme stylesheet is still a <link>');
