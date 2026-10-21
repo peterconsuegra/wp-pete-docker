@@ -1,6 +1,6 @@
 # ──────────────────────────────────────────────────────────────────────
 # WordPress Pete – parameterised PHP-FPM image
-#   • Build with any officially-maintained tag (8.1-fpm, 8.2-fpm, 8.3-fpm …)
+#   • Build with any officially-maintained tag (8.2-fpm, 8.3-fpm, 8.4-fpm …)
 #   • Default is 8.3-fpm if no --build-arg is supplied
 # ──────────────────────────────────────────────────────────────────────
 ARG PHP_VERSION=8.3
@@ -11,16 +11,31 @@ FROM php:${PHP_VERSION}-fpm
 ARG PETE_ENVIRONMENT=production
 ENV PETE_ENVIRONMENT=${PETE_ENVIRONMENT}
 
+# ────────────── Security floor (fails fast on a stale base) ──────────
+# PHP2Shell (CVE-2026-109618 / CVE-2026-109619), unauthenticated RCE, is
+# fixed in 8.2.35 / 8.3.36 / 8.4.27 / 8.5.12; 8.1 and older get no fix.
+# A cached php:<minor>-fpm can still be older, so refuse to build on it:
+# rebuild with `docker compose build --pull php`.
+RUN php -r '$fixed = ["8.2" => "8.2.35", "8.3" => "8.3.36", "8.4" => "8.4.27", "8.5" => "8.5.12"]; \
+      $branch = PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION; \
+      if (version_compare($branch, "8.2", "<") || (isset($fixed[$branch]) && version_compare(PHP_VERSION, $fixed[$branch], "<"))) { \
+        fwrite(STDERR, "PHP " . PHP_VERSION . " is vulnerable to PHP2Shell (CVE-2026-109618/109619). Use PHP 8.2+ and rebuild with --pull.\n"); \
+        exit(1); \
+      } \
+      echo "PHP " . PHP_VERSION . " has the PHP2Shell fix\n";'
+
 # ────────────── 0. Shared ENV ─────────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_DISABLE_XDEBUG_WARN=1
 
 
-ENV CACHETOOL_VERSION=9.1.0
+# Pinned: the unversioned download serves the newest release, and
+# cachetool 12.0.0 (2026-10-18) refuses to run on PHP < 8.4.
+ENV CACHETOOL_VERSION=10.0.0
 RUN set -eux; \
     curl -fsSL -o /usr/local/bin/cachetool \
-      "https://gordalina.github.io/cachetool/downloads/cachetool.phar"; \
+      "https://github.com/gordalina/cachetool/releases/download/${CACHETOOL_VERSION}/cachetool.phar"; \
     chmod +x /usr/local/bin/cachetool; \
     # default to FPM TCP listener (change to socket if you use one)
     printf "adapter: fastcgi\nfastcgi: \"127.0.0.1:9000\"\n" > /usr/local/etc/cachetool.yml; \

@@ -1,7 +1,7 @@
 # Pete Panel — The Agentic WordPress Environment
 
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![PHP](https://img.shields.io/badge/PHP-8.1%20%7C%208.2%20%7C%208.3-777BB4?logo=php&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-8.2%20%7C%208.3-777BB4?logo=php&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-ready-21759B?logo=wordpress&logoColor=white)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%E2%80%93M5-000000?logo=apple&logoColor=white)
 
@@ -52,7 +52,7 @@ When the containers are healthy, open **http://pete.petelocal.net/** over **HTTP
 | Service | Role |
 |---|---|
 | **Apache** | Web server — MPM Event + HTTP/2, ports 80/443 |
-| **PHP-FPM** | WordPress runtime — PHP 8.1 / 8.2 / 8.3, switchable |
+| **PHP-FPM** | WordPress runtime — PHP 8.2 / 8.3, switchable |
 | **MariaDB** (`db`) | Database |
 | **Redis** | Object cache |
 | **phpMyAdmin** | Database UI (auto-installed on first boot) |
