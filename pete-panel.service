@@ -1,5 +1,6 @@
 [Unit]
 Description=Pete Panel - Docker Compose stack
+Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
 
@@ -11,20 +12,24 @@ WorkingDirectory=/opt/pete-panel
 # installer from the profile matching this server's RAM/CPU. See
 # /opt/pete-panel/.compose_profile for which one it came from.
 
-# 1) Always pull latest images for this stack
-ExecStart=/usr/bin/docker compose pull
+# Boot only brings back the stack that was already deployed: no pull, no
+# build, no recreate. Every container has restart: always, so Docker usually
+# starts them first and this is a no-op; it creates any that are missing.
+# Image updates are deliberate deploys (build --pull, then up -d), never a
+# side effect of a reboot.
+ExecStart=/usr/bin/docker compose up -d --no-build --pull never --no-recreate
 
-# 2) Rebuild images (in case Dockerfiles changed)
-ExecStart=/usr/bin/docker compose build
-
-# 3) Bring the stack up in detached mode
-ExecStart=/usr/bin/docker compose up -d
-
-# 4) Properly tear the stack down when stopping the service
-ExecStop=/usr/bin/docker compose down
+# Stop the containers cleanly before Docker itself shuts down: the web tier
+# first (php's entrypoint ignores SIGTERM, so it is killed after 30 s), then
+# the database with 120 s so InnoDB finishes its shutdown even where a compose
+# file lacks stop_grace_period. Never `down`: the containers must still exist
+# for restart: always to bring them back on the next boot.
+ExecStop=/usr/bin/docker compose stop -t 30 apache php
+ExecStop=/usr/bin/docker compose stop -t 120
 
 RemainAfterExit=yes
-TimeoutStartSec=0
+TimeoutStartSec=300
+TimeoutStopSec=240
 
 [Install]
 WantedBy=multi-user.target
